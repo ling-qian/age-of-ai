@@ -1,6 +1,6 @@
 # Three Kingdoms MVP Migration Plan
 
-Status: Audit complete; implementation has not yet modified the existing game runtime.
+Status: Repository audit complete; M1 implementation is added on this feature branch. Runtime checks have not yet been executed in this environment.
 
 ## Safety rules
 
@@ -22,6 +22,13 @@ Status: Audit complete; implementation has not yet modified the existing game ru
 ## MVP integration approach
 
 Use the current stack rather than migrating the whole project to React. Add a self-contained Three Kingdoms mode with its own UI module, state model, content JSON, and deterministic combat functions. Keep it client-side and local-save first; this avoids changing the RTS server protocol before gameplay is validated.
+
+## Current M1 implementation
+
+- Added a separate **Play Three Kingdoms** entry button on the existing name screen.
+- Added `client/src/three-kingdoms/screen.ts` and `story-events.json` for the opening event, three choices, deterministic effects, a dedicated local save, and the Yellow Turban first-battle entry panel.
+- Added isolated campaign-mode styles. The existing RTS lobby, room flow, simulation, WebSocket protocol, and deployment files were not intentionally changed.
+- The M1 battle entry is a briefing/roster screen only; playable tactical combat remains M2.
 
 ## Milestones
 
