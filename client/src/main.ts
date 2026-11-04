@@ -14,9 +14,10 @@ import { RoomScreen } from './screens/room';
 import { GameScreen } from './screens/game';
 import { GameOverScreen } from './screens/gameover';
 import { SettingsOverlay } from './screens/settings';
+import { ThreeKingdomsScreen } from './three-kingdoms/screen';
 import './style.css';
 
-type ScreenName = 'name' | 'lobby' | 'room' | 'game';
+type ScreenName = 'name' | 'lobby' | 'room' | 'game' | 'kingdoms';
 
 const app = document.getElementById('app');
 if (!app) throw new Error('elemento #app não encontrado');
@@ -107,6 +108,7 @@ document.body.appendChild(gearBtn);
 
 const nameScreen = new NameScreen({
   initialName: getSavedName(),
+  onOpenThreeKingdoms: () => showScreen('kingdoms'),
   onEnter: (name) => {
     // não vai pro lobby na hora: espera o servidor confirmar o nome (nameOk) ou
     // avisar que já está em uso (nameTaken).
@@ -145,12 +147,17 @@ const roomScreen = new RoomScreen({
   onSetBotDifficulty: (botId, difficulty) => net.send({ type: 'setBotDifficulty', botId, difficulty }),
 });
 
+const threeKingdomsScreen = new ThreeKingdomsScreen({
+  onBack: () => showScreen('name'),
+});
+
 function screenEl(name: ScreenName): HTMLElement {
   switch (name) {
     case 'name': return nameScreen.el;
     case 'lobby': return lobbyScreen.el;
     case 'room': return roomScreen.el;
     case 'game': return gameScreen?.el ?? document.createElement('div');
+    case 'kingdoms': return threeKingdomsScreen.el;
   }
 }
 
