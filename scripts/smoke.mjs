@@ -6,6 +6,8 @@
 
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import net from 'node:net';
 import WebSocket from 'ws';
 
