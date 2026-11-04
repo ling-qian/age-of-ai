@@ -1,0 +1,46 @@
+{
+  "taoyuan_oath": {
+    "id": "taoyuan_oath",
+    "title": "The Peach Garden Oath",
+    "year": 184,
+    "trigger": { "campaignStart": true },
+    "narrative": "The Han realm is breaking apart. Liu Bei, Guan Yu, and Zhang Fei meet beneath the peach blossoms and agree that the people must not be abandoned to chaos. Before the Yellow Turban uprising spreads, you must decide what binds this fledgling brotherhood together.",
+    "choices": [
+      {
+        "id": "swear_oath",
+        "text": "Swear the brotherhood oath",
+        "description": "Put trust and loyalty before personal gain.",
+        "effects": { "morale": 2, "supplies": -1, "bond": 2 },
+        "result": "The three warriors pledge their lives to one another. Their resolve hardens, though the gathering leaves fewer supplies for the road."
+      },
+      {
+        "id": "gather_supplies",
+        "text": "Secure arms and provisions first",
+        "description": "Prepare carefully before risking lives in battle.",
+        "effects": { "morale": 0, "supplies": 2, "bond": 1 },
+        "result": "Weapons, food, and bandages are gathered before the march. The brothers are practical, better supplied, and ready for a longer campaign."
+      },
+      {
+        "id": "rally_villagers",
+        "text": "Rally the villages against the raiders",
+        "description": "Win local support and build a wider alliance.",
+        "effects": { "morale": 1, "supplies": 0, "bond": 1, "allies": 2 },
+        "result": "Villagers answer the call and offer guides and volunteers. Your force gains local support, though the road ahead remains uncertain."
+      }
+    ],
+    "nextEventId": "yellow_turban_first_battle"
+  },
+  "yellow_turban_first_battle": {
+    "id": "yellow_turban_first_battle",
+    "title": "The Yellow Turban Rebellion",
+    "year": 184,
+    "trigger": { "flagsRequired": ["taoyuan_oath_resolved"] },
+    "narrative": "Yellow Turban bands are approaching a nearby settlement. The local militia is scattered, and the first clash will decide whether the people trust your banner. Choose your formation and prepare to defend the village.",
+    "battleEntry": {
+      "enemy": "Yellow Turban Raiders",
+      "objective": "Defend the village and drive the raiders from the road.",
+      "playerRoster": ["Liu Bei", "Guan Yu", "Zhang Fei"],
+      "enemyRoster": ["Raider Captain", "Rebel Archer", "Rebel Spearman"]
+    }
+  }
+}
