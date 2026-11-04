@@ -116,6 +116,14 @@ function serveJogos(urlPath: string, res: http.ServerResponse): void {
 function serveStatic(req: http.IncomingMessage, res: http.ServerResponse): void {
   const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
 
+  // Health endpoint used by the Cloudflare Container Durable Object before
+  // forwarding HTTP and WebSocket traffic to the Node process.
+  if (urlPath === '/healthz') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ ok: true, service: 'age-of-ai' }));
+    return;
+  }
+
   // Contagem ao vivo (jogadores online / salas / partidas) — usada pelo monitor.
   if (urlPath === '/status') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -354,7 +362,7 @@ const heartbeat = setInterval(() => {
 }, HEARTBEAT_MS);
 wss.on('close', () => clearInterval(heartbeat));
 
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Age of AI server ouvindo na porta ${PORT}`);
   console.log(`Servindo o cliente de: ${DIST}`);
 });
