@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "age-of-ai-cloud",
+  "main": "cloudflare/worker/src/index.ts",
+  "compatibility_date": "2026-11-04",
+  "observability": {
+    "enabled": true
+  },
+  "containers": [
+    {
+      "class_name": "GameContainer",
+      "image": "./Dockerfile",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "GAME_CONTAINER",
+        "class_name": "GameContainer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["GameContainer"]
+    }
+  ]
+}
