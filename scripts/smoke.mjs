@@ -17,7 +17,7 @@ import WebSocket from 'ws';
 // via the actual server-sent data wherever possible instead of hardcoding.
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const GAME_PORT = 8080; // from shared/src/constants.ts
+const GAME_PORT = Number(process.env.PORT) || 8080;
 
 // Lê MAP_SIZE direto do arquivo de constantes para o teste nunca ficar defasado.
 function readMapSize() {
