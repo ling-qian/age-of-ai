@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+**/node_modules
+**/dist
+client/dist
+server/dist
+.online-games
+online-games
+.env
+.env.*
+!.env.example
+.DS_Store
