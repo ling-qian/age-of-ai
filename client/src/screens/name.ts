@@ -5,6 +5,7 @@ import { t } from '../i18n';
 
 export interface NameScreenDeps {
   onEnter: (name: string) => void;
+  onOpenThreeKingdoms: () => void;
   initialName?: string; // nome salvo (localStorage) p/ pré-preencher após refresh
 }
 
@@ -18,6 +19,7 @@ export class NameScreen {
   private status: HTMLElement;
   private titleEl: HTMLElement;
   private enterBtn: HTMLButtonElement;
+  private kingdomsBtn: HTMLButtonElement;
   private footEl: HTMLElement;
 
   constructor(private deps: NameScreenDeps) {
@@ -62,6 +64,10 @@ export class NameScreen {
     });
     login.appendChild(this.enterBtn);
 
+    this.kingdomsBtn = el('button', 'btn tk-launch-btn', 'Play Three Kingdoms');
+    this.kingdomsBtn.addEventListener('click', () => this.deps.onOpenThreeKingdoms());
+    login.appendChild(this.kingdomsBtn);
+
     this.status = el('div', 'status-line');
     login.appendChild(this.status);
 
@@ -77,6 +83,7 @@ export class NameScreen {
     this.titleEl.textContent = t('name.join_heading');
     this.input.placeholder = t('name.placeholder');
     this.enterBtn.textContent = t('name.enter');
+    this.kingdomsBtn.textContent = 'Play Three Kingdoms';
     this.footEl.textContent = t('name.footer');
     this.status.textContent = ''; // a mensagem antiga ficaria no idioma velho
   }
