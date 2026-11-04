@@ -14,12 +14,12 @@ import WebSocket from 'ws';
 // of numeric constants we need for assertions, and cross-check MAP_SIZE etc.
 // via the actual server-sent data wherever possible instead of hardcoding.
 
-const ROOT = 'D:\\age';
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GAME_PORT = 8080; // from shared/src/constants.ts
 
 // Lê MAP_SIZE direto do arquivo de constantes para o teste nunca ficar defasado.
 function readMapSize() {
-  const src = readFileSync(`${ROOT}\\shared\\src\\constants.ts`, 'utf8');
+  const src = readFileSync(resolve(ROOT, 'shared/src/constants.ts'), 'utf8');
   const m = /MAP_SIZE\s*=\s*(\d+)/.exec(src);
   return m ? parseInt(m[1], 10) : 48;
 }
@@ -187,7 +187,8 @@ async function main() {
 
   serverProc = spawn('npx', ['tsx', 'server/src/index.ts'], {
     cwd: ROOT,
-    shell: true,
+    shell: process.platform === 'win32',
+    detached: process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -226,6 +227,12 @@ async function main() {
     );
     const idA = welcomeA.playerId;
     const idB = welcomeB.playerId;
+
+    // A new server must expose an actually empty lobby, not fabricated activity.
+    b.send({ type: 'listRooms' });
+    const initialLobby = await b.waitFor((m) => m.type === 'roomList', 5000, 'initial empty roomList');
+    record(Array.isArray(initialLobby.rooms) && initialLobby.rooms.length === 0,
+      `Fresh lobby contains zero rooms (got ${initialLobby.rooms?.length ?? 'invalid'})`);
 
     // ---- setName ----
     a.send({ type: 'setName', name: 'Alice' });
