@@ -8,16 +8,17 @@ import { GAME_PORT } from '@age/shared';
 export type NetStatus = 'connecting' | 'open' | 'closed';
 
 // Escolhe a URL do WebSocket conforme como a página foi servida:
-//  - via HTTPS (ex.: túnel Cloudflare): mesma origem em wss://<host>/ws,
-//    onde o Vite faz proxy de /ws para o servidor do jogo (evita mixed content
-//    e a necessidade de expor a porta 8080 separadamente).
-//  - local (http://localhost): conexão direta em ws://<host>:8080, como antes.
-function wsUrl(): string {
-  if (location.protocol === 'https:') {
-    return `wss://${location.host}/ws`;
-  }
-  return `ws://${location.hostname}:${GAME_PORT}`;
-}
+ //  - Vite dev (porta 5199): conecta ao servidor autoritativo na porta GAME_PORT.
+ //  - Cliente servido pelo Node (qualquer PORT) ou via HTTPS/Cloudflare:
+ //    usa a mesma origem e o caminho /ws. Assim HTTP e HTTPS funcionam sem
+ //    fixar a porta 8080 nem expor uma segunda porta.
+ function wsUrl(): string {
+   if (location.port === '5199') {
+     return `ws://${location.hostname}:${GAME_PORT}`;
+   }
+   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+   return `${protocol}//${location.host}/ws`;
+ }
 
 export class Net {
   onMessage: (msg: ServerMessage) => void = () => {};
