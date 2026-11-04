@@ -1,0 +1,51 @@
+name: Cloudflare Container image checks
+
+on:
+  push:
+    branches:
+      - aoai/cloudflare-containers
+  pull_request:
+    branches:
+      - main
+      - aoai/cloudflare-containers
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-build-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build client
+        run: npm run build -w client
+      - name: Build server
+        run: npm run build -w server
+      - name: Two-player WebSocket smoke test
+        run: npm run smoke
+      - name: Build production container image
+        run: docker build --tag age-of-ai-cloud:ci .
+      - name: Verify container health endpoint
+        run: |
+          docker run --detach --rm --name age-of-ai-ci -p 8080:8080 age-of-ai-cloud:ci
+          trap 'docker stop age-of-ai-ci >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/healthz; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs age-of-ai-ci
+          exit 1
