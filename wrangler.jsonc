@@ -26,5 +26,11 @@
       "tag": "v1",
       "new_sqlite_classes": ["GameContainer"]
     }
-  ]
+  ],
+  "exports": {
+    "GameContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
 }
