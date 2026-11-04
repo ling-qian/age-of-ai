@@ -1,71 +1,80 @@
 # Three Kingdoms MVP Migration Plan
 
-Status: Repository audit complete; M1 implementation is added on this feature branch. Runtime checks have not yet been executed in this environment.
+Status: M1 implementation is present on `feature/three-kingdoms-mvp`; M1 acceptance is **PENDING**. M2 is **BLOCKED** until every M1 gate below passes and the acceptance record is frozen.
 
 ## Safety rules
 
 - Work only on `feature/three-kingdoms-mvp`, branched from `aoai/alpha-baseline`.
-- Do not rewrite or delete the existing Age of AI RTS screens, simulation, WebSocket protocol, or deployment configuration.
-- Keep the existing RTS playable. Add Three Kingdoms as an isolated game mode and route.
-- Use deterministic TypeScript rules for battle and state changes. Narrative events are JSON data; no LLM is required for MVP.
-- Do not claim deployment is complete until the target environment is actually deployed and smoke-tested.
+- Do not rewrite or delete the existing Age of AI RTS screens, simulation, WebSocket protocol, multiplayer flow, or deployment configuration.
+- Keep the existing RTS playable. Three Kingdoms is an isolated game mode and route within the existing product.
+- Use deterministic TypeScript rules for future Three Kingdoms battles. Story events are JSON data; no LLM is required for MVP.
+- Do not claim runtime acceptance or deployment until it has actually been tested in the target environment.
 
 ## Existing architecture found
 
 - Monorepo workspaces: `shared`, `server`, `client`.
 - Client: Vite + TypeScript + custom DOM screens + Canvas 2D; it is not React/Zustand.
 - Server: Node.js + TypeScript + native `ws`; authoritative real-time RTS simulation and lobby.
-- Existing smoke test: `npm run typecheck`, `npm run build`, and `npm run smoke`.
+- Existing checks: `npm run typecheck`, `npm run build`, and `npm run smoke`.
 - Existing identity/settings are browser-local; no durable game-save database is currently documented.
-- A separate `aoai/cloudflare-containers` branch contains a Docker/Cloudflare Container + Durable Object proxy experiment. It must be validated separately before treating it as production deployment. This feature branch deliberately starts from `aoai/alpha-baseline`.
+- A separate `aoai/cloudflare-containers` branch contains a Docker/Cloudflare Container + Durable Object proxy experiment. It is not part of this feature branch and must be validated separately before being treated as production deployment.
 
-## MVP integration approach
+## M1 change boundary
 
-Use the current stack rather than migrating the whole project to React. Add a self-contained Three Kingdoms mode with its own UI module, state model, content JSON, and deterministic combat functions. Keep it client-side and local-save first; this avoids changing the RTS server protocol before gameplay is validated.
+Compared with `aoai/alpha-baseline`, the current feature branch changes only these seven paths:
+
+- Modified: `client/src/main.ts`, `client/src/screens/name.ts`, `client/src/style.css`.
+- Added: `client/src/three-kingdoms/screen.ts`, `client/src/three-kingdoms/story-events.json`.
+- Added documentation: `docs/THREE_KINGDOMS_M1_ACCEPTANCE.md`, `docs/THREE_KINGDOMS_MIGRATION_PLAN.md`.
+
+No `server/`, `shared/`, RTS simulation, lobby, or WebSocket protocol files are changed in this comparison. This confirms the intended source-level isolation, but it does **not** replace runtime regression testing.
 
 ## Current M1 implementation
 
 - Added a separate **Play Three Kingdoms** entry button on the existing name screen.
-- Added `client/src/three-kingdoms/screen.ts` and `story-events.json` for the opening event, three choices, deterministic effects, a dedicated local save, and the Yellow Turban first-battle entry panel.
-- Added isolated campaign-mode styles. The existing RTS lobby, room flow, simulation, WebSocket protocol, and deployment files were not intentionally changed.
-- The M1 battle entry is a briefing/roster screen only; playable tactical combat remains M2.
+- Added a dedicated screen and JSON story data for the Peach Garden Oath, three choices, deterministic choice effects, a dedicated local save, and the Yellow Turban first-battle briefing.
+- Added campaign-only styles.
+- The battle entry is a briefing/roster screen only. There is no playable tactical battle in M1.
+
+## Mandatory M1 exit gate — all conditions required
+
+M2 must remain paused until all four gates pass on the same candidate commit:
+
+1. **Automated code checks:** `npm ci`, `npm run typecheck`, `npm run build`, and `npm run smoke` all complete successfully.
+2. **Original RTS multiplayer regression:** run the original Age of AI with at least two separate clients; verify room creation/join, ready/start, live state synchronization, player actions, and a clean return/exit. The original multiplayer match must be genuinely playable, not merely compile.
+3. **Three Kingdoms mode regression:** verify the mode opens and exits cleanly; each opening choice applies the expected effects once; refresh restores the dedicated campaign save; the Yellow Turban briefing opens; reset affects only the Three Kingdoms save; the original RTS entry and multiplayer path remain accessible.
+4. **Acceptance record and freeze:** record the tested commit SHA, environment, command results, multiplayer test result, Three Kingdoms test result, and any evidence in `THREE_KINGDOMS_M1_ACCEPTANCE.md`. Mark M1 accepted and freeze that candidate only after gates 1–3 pass. Until then, keep status **PENDING** and do not begin M2.
+
+If any gate fails, fix the M1 regression first and rerun the affected checks. Do not work around a failure by changing the original RTS engine or server protocol.
 
 ## Milestones
 
-### M0 — Baseline safety and acceptance
-- Run `npm ci`, `npm run typecheck`, `npm run build`, and `npm run smoke` on this branch.
-- Record baseline results before game changes.
-- Confirm the original RTS still launches and remains reachable.
-- No deployment or database changes.
+### M0 — Baseline safety
+- Preserve the original baseline and its known launch/test commands.
+- No deployment, database, lobby, or WebSocket changes.
 
 ### M1 — Three Kingdoms entry and story loop
-- Add a separate entry point/navigation to Three Kingdoms mode.
-- English-first title screen and campaign state.
-- Story event data with trigger conditions, options, deterministic effects, and event flags.
-- Opening event: Peach Garden Oath, followed by Yellow Turban Rebellion.
-- Save campaign progress locally without touching existing RTS settings or identity keys.
+- Isolated entry point, screen, campaign state, story JSON, local save, and battle briefing.
+- Exit only through the mandatory M1 gate above.
+- **Current state: implementation present; acceptance and freeze pending.**
 
-### M2 — Tactical battle
-- Initial 3v3 battle.
-- Three troop types: infantry, archers, light cavalry.
-- Formation choices: Spearhead, Square, Echelon/Wing.
-- Deterministic hit/damage and turn order; readable English combat log.
-- Add unit tests or deterministic assertions for combat rules.
+### M2 — Tactical battle (NOT STARTED; BLOCKED)
+After M1 is accepted and frozen:
+- Add a new independent `client/src/three-kingdoms/battle-engine.ts` and dedicated battle-rule tests.
+- Implement complete playable 3v3 turn-based combat: infantry/archer/light-cavalry counters, formation selection, action order, deterministic damage resolution, victory/defeat checks, and English battle logs.
+- Keep all Three Kingdoms combat code and rules isolated from the existing Age of AI RTS battle/simulation engine. Do not rewrite, replace, or refactor the RTS battle engine for this feature.
 
 ### M3 — Campaign loop
-- Five-city node map, city ownership, recruit roster, battle results and next-event unlocks.
-- Add a small initial roster including Liu Bei, Guan Yu, Zhang Fei, Cao Cao, and a Yellow Turban opponent.
-- Persist and restore campaign state from a dedicated localStorage key.
+- Five-city node map, city ownership, recruit roster, battle results, and next-event unlocks.
+- Dedicated campaign save; no changes to RTS settings or identity keys.
 
 ### M4 — Verification and deployment
-- Run typecheck, production build, existing RTS smoke test, and new campaign/battle tests.
-- Test refresh/resume, event choices, combat completion, and save compatibility.
-- Deploy only after the chosen hosting branch/environment is verified; keep the RTS route available.
+- Run the complete code and browser regression suite, including new deterministic battle tests.
+- Deploy only after the chosen hosting environment is verified; keep the original RTS entry and multiplayer route available.
 
-## Acceptance criteria
+## Overall product acceptance
 
-- Existing Age of AI RTS remains playable with no intentional behavior changes.
-- Three Kingdoms mode can be opened independently.
-- A player can choose a story option, enter a 3v3 battle, finish it, return to the campaign map, unlock the next event, and reload without losing the local save.
-- All gameplay state changes are deterministic and validated by code, not generated by an LLM.
-- No public deployment is reported as successful without a real health check and browser/WebSocket smoke test.
+- Existing Age of AI RTS multiplayer remains playable.
+- Three Kingdoms opens as a separate mode and does not interfere with RTS flows.
+- Three Kingdoms battle state is deterministic and validated by tests, not generated by an LLM.
+- No public deployment is reported as successful without an actual health check and browser/multiplayer smoke test.
