@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite';
 
+const gamePort = Number(process.env.PORT) || 8080;
+
 export default defineConfig({
   server: {
     port: 5199,
@@ -16,7 +18,7 @@ export default defineConfig({
     // para que tudo passe por uma única origem (necessário quando servido por um túnel).
     proxy: {
       '/ws': {
-        target: 'ws://localhost:8080',
+        target: `ws://localhost:${gamePort}`,
         ws: true,
         changeOrigin: true,
       },
