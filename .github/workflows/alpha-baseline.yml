@@ -1,0 +1,37 @@
+name: Alpha baseline checks
+
+on:
+  push:
+    branches:
+      - aoai/alpha-baseline
+  pull_request:
+    branches:
+      - main
+      - aoai/alpha-baseline
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build client
+        run: npm run build -w client
+      - name: Build server
+        run: npm run build -w server
+      - name: Two-player WebSocket smoke test
+        run: npm run smoke
