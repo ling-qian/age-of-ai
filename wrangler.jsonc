@@ -9,8 +9,12 @@
   "containers": [
     {
       "class_name": "GameContainer",
-      "image": "./Dockerfile",
-      "max_instances": 1
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": {
+          "dockerfile": "./Dockerfile"
+        }
+      }
     }
   ],
   "durable_objects": {
