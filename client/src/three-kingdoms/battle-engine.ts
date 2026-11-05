@@ -408,25 +408,6 @@ function finishIfSideDefeated(state: BattleState): boolean {
   return true;
 }
 
-function casualtyCount(
-  attacker: BattleUnit,
-  defender: BattleUnit,
-  attackerFormation: Formation,
-  defenderFormation: Formation,
-): number {
-  const base = BATTLE_RULES.baseCasualties
-    + attacker.stats.martial * BATTLE_RULES.martialCasualtyWeight
-    + attacker.stats.leadership * BATTLE_RULES.leadershipCasualtyWeight;
-  const strength = BATTLE_RULES.strengthBase
-    + BATTLE_RULES.strengthTroopWeight * (attacker.troops / attacker.maxTroops);
-  const outgoing = attackerFormation === 'arrow' ? BATTLE_RULES.arrowOutgoingMultiplier : 1;
-  const incoming = defenderFormation === 'square' ? BATTLE_RULES.squareIncomingMultiplier : 1;
-  const guard = defender.guarded ? BATTLE_RULES.guardMultiplier : 1;
-  const suppression = attacker.suppressed ? BATTLE_RULES.suppressionMultiplier : 1;
-  const rounded = Math.round(base * strength * outgoing * incoming * guard * suppression);
-  return Math.min(defender.troops, Math.max(BATTLE_RULES.minimumCasualties, rounded));
-}
-
 /** Resolve one complete simultaneous-submission / initiative-ordered round. */
 export function resolveRound(state: BattleState, input: RoundInput): BattleState {
   assertBattleState(state, false);
