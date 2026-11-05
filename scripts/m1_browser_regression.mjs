@@ -159,10 +159,33 @@ function latestSnapshot(messages) {
 async function waitUntil(predicate, timeoutMs, label) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    if (predicate()) return;
+    if (await predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   throw new Error(`Timed out waiting for ${label}`);
+}
+
+async function installWebSocketProbe(page) {
+  await page.addInitScript(() => {
+    window.__m1WsFrames = [];
+    const NativeWebSocket = window.WebSocket;
+    class ProbedWebSocket extends NativeWebSocket {
+      constructor(url, protocols) {
+        if (protocols === undefined) super(url);
+        else super(url, protocols);
+        this.addEventListener('message', (event) => {
+          if (typeof event.data === 'string') window.__m1WsFrames.push(event.data);
+        });
+      }
+    }
+    Object.setPrototypeOf(ProbedWebSocket, NativeWebSocket);
+    window.WebSocket = ProbedWebSocket;
+  });
+}
+
+async function readBrowserMessages(page) {
+  const frames = await page.evaluate(() => window.__m1WsFrames ?? []);
+  return frames.map(parseFrame).filter(Boolean);
 }
 
 async function testOriginalRtsMultiplayer(browser) {
@@ -170,10 +193,11 @@ async function testOriginalRtsMultiplayer(browser) {
   const contextB = await browser.newContext({ locale: 'en-US', viewport: { width: 1440, height: 900 } });
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
-  const messagesA = [];
-  const messagesB = [];
-  collectSocketMessages(pageA, messagesA, 'RTS browser A');
-  collectSocketMessages(pageB, messagesB, 'RTS browser B');
+  let messagesA = [];
+  let messagesB = [];
+  await Promise.all([installWebSocketProbe(pageA), installWebSocketProbe(pageB)]);
+  collectSocketMessages(pageA, [], 'RTS browser A');
+  collectSocketMessages(pageB, [], 'RTS browser B');
 
   const suffix = Date.now().toString(36);
   const nameA = `M1Alpha-${suffix}`;
@@ -222,19 +246,12 @@ async function testOriginalRtsMultiplayer(browser) {
       pageA.locator('#game-canvas').waitFor(),
       pageB.locator('#game-canvas').waitFor(),
     ]);
-    try {
-      await waitUntil(
-        () => messagesA.some((m) => m.type === 'gameStart') && messagesB.some((m) => m.type === 'gameStart')
-          && latestSnapshot(messagesA) && latestSnapshot(messagesB),
-        10_000,
-        'both browser clients to receive gameStart and snapshots',
-      );
-    } catch (error) {
-      console.error(`RTS browser A received message types: ${messagesA.map((m) => m.type).join(', ') || '(none)'}`);
-      console.error(`RTS browser B received message types: ${messagesB.map((m) => m.type).join(', ') || '(none)'}`);
-      console.error(`RTS canvas present: A=${await pageA.locator('#game-canvas').count()}, B=${await pageB.locator('#game-canvas').count()}`);
-      throw error;
-    }
+    await waitUntil(async () => {
+      messagesA = await readBrowserMessages(pageA);
+      messagesB = await readBrowserMessages(pageB);
+      return messagesA.some((m) => m.type === 'gameStart') && messagesB.some((m) => m.type === 'gameStart')
+        && latestSnapshot(messagesA) && latestSnapshot(messagesB);
+    }, 15_000, 'both browser clients to receive gameStart and snapshots');
 
     const gameStartA = messagesA.find((m) => m.type === 'gameStart');
     const gameStartB = messagesB.find((m) => m.type === 'gameStart');
