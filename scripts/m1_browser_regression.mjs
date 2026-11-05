@@ -58,12 +58,22 @@ function parseFrame(payload) {
   }
 }
 
-function collectSocketMessages(page, target) {
+function collectSocketMessages(page, target, label = 'browser') {
   page.on('websocket', (socket) => {
+    console.log(`[${label}] WebSocket opened: ${socket.url()}`);
     socket.on('framereceived', (payload) => {
       const message = parseFrame(payload);
-      if (message) target.push(message);
+      if (message) {
+        target.push(message);
+        if (message.type === 'gameStart' || message.type === 'snapshot' || message.type === 'welcome' || message.type === 'roomState') {
+          console.log(`[${label}] WebSocket received: ${message.type}`);
+        }
+      } else {
+        console.log(`[${label}] WebSocket received an unparsed frame`);
+      }
     });
+    socket.on('socketerror', (error) => console.error(`[${label}] WebSocket error: ${error}`));
+    socket.on('close', () => console.log(`[${label}] WebSocket closed`));
   });
   page.on('pageerror', (error) => browserErrors.push(`${page.url()}: ${error.message}`));
 }
@@ -162,8 +172,8 @@ async function testOriginalRtsMultiplayer(browser) {
   const pageB = await contextB.newPage();
   const messagesA = [];
   const messagesB = [];
-  collectSocketMessages(pageA, messagesA);
-  collectSocketMessages(pageB, messagesB);
+  collectSocketMessages(pageA, messagesA, 'RTS browser A');
+  collectSocketMessages(pageB, messagesB, 'RTS browser B');
 
   const suffix = Date.now().toString(36);
   const nameA = `M1Alpha-${suffix}`;
@@ -212,12 +222,19 @@ async function testOriginalRtsMultiplayer(browser) {
       pageA.locator('#game-canvas').waitFor(),
       pageB.locator('#game-canvas').waitFor(),
     ]);
-    await waitUntil(
-      () => messagesA.some((m) => m.type === 'gameStart') && messagesB.some((m) => m.type === 'gameStart')
-        && latestSnapshot(messagesA) && latestSnapshot(messagesB),
-      10_000,
-      'both browser clients to receive gameStart and snapshots',
-    );
+    try {
+      await waitUntil(
+        () => messagesA.some((m) => m.type === 'gameStart') && messagesB.some((m) => m.type === 'gameStart')
+          && latestSnapshot(messagesA) && latestSnapshot(messagesB),
+        10_000,
+        'both browser clients to receive gameStart and snapshots',
+      );
+    } catch (error) {
+      console.error(`RTS browser A received message types: ${messagesA.map((m) => m.type).join(', ') || '(none)'}`);
+      console.error(`RTS browser B received message types: ${messagesB.map((m) => m.type).join(', ') || '(none)'}`);
+      console.error(`RTS canvas present: A=${await pageA.locator('#game-canvas').count()}, B=${await pageB.locator('#game-canvas').count()}`);
+      throw error;
+    }
 
     const gameStartA = messagesA.find((m) => m.type === 'gameStart');
     const gameStartB = messagesB.find((m) => m.type === 'gameStart');
