@@ -146,6 +146,17 @@ async function testStoryChoice(browser, choice, expected, index) {
   await page.locator('.tk-event-title').filter({ hasText: 'The Yellow Turban Rebellion' }).waitFor();
   assert.equal(await page.locator('.tk-roster .tk-roster-unit').count(), 6, 'battle briefing must show both 3-unit rosters');
 
+  // Battle-entry stage must also survive a full browser reload.
+  await page.reload();
+  await page.locator('.tk-launch-btn').click();
+  await page.locator('.tk-event-title').filter({ hasText: 'The Yellow Turban Rebellion' }).waitFor();
+  assert.equal(await page.locator('.tk-roster .tk-roster-unit').count(), 6, 'battle-entry save must restore both rosters after refresh');
+  assert.deepEqual(await getCampaignStats(page), expected, 'battle-entry refresh must preserve the chosen campaign effects');
+  const restoredStage = await page.evaluate(() => JSON.parse(
+    localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+  )?.stage);
+  assert.equal(restoredStage, 'battle-entry', 'battle-entry refresh must retain the saved stage');
+
   await page.getByRole('button', { name: 'Restart opening' }).click();
   await page.locator('.tk-event-title').filter({ hasText: 'The Peach Garden Oath' }).waitFor();
   assert.deepEqual(await getCampaignStats(page), {
