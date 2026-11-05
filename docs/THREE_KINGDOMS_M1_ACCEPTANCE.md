@@ -10,9 +10,9 @@ M2 is blocked until every mandatory gate below passes on the same candidate comm
 
 | Field | Result |
 |---|---|
-| Candidate commit SHA | PENDING |
-| Test date and environment | PENDING |
-| Tester | PENDING |
+| Candidate commit SHA | `27e127c2ab9f180c6345b4468579348ad9e128ae` (automated-gate candidate; browser regression still running) |
+| Test date and environment | 2026-11-05 · GitHub Actions `ubuntu-latest` · Node.js 20 · [run 41960518404](https://github.com/ling-qian/age-of-ai/actions/runs/41960518404) |
+| Tester | Automated CI; manual deployment/browser review not yet recorded |
 | M1 decision | PENDING — not accepted or frozen |
 
 ## Gate 1 — Automated checks
@@ -28,10 +28,10 @@ npm run smoke
 
 | Check | Result | Notes / log reference |
 |---|---|---|
-| `npm ci` | PENDING | |
-| `npm run typecheck` | PENDING | |
-| `npm run build` | PENDING | |
-| `npm run smoke` | PENDING | |
+| `npm ci` | PASS | Run 41960518404, step 4 |
+| `npm run typecheck` | PASS | Run 41960518404, step 5 |
+| `npm run build` | PASS | Run 41960518404, step 6 |
+| `npm run smoke` | PASS | Run 41960518404, step 7 |
 
 All four must pass. Record failures verbatim; do not mark acceptance based only on code review or JSON validation.
 
