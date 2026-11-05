@@ -511,7 +511,6 @@ async function testThreeKingdomsBattle(browser) {
     assert.equal(restored.campaign.battleState.log.length, logCount, 'refresh must preserve the existing log exactly');
     assert.equal(restored.name, playerName, 'refresh must preserve the RTS name');
     assert.equal(restored.settings, settingsValue, 'refresh must preserve RTS preferences');
-    assert.equal(restored.name, undefined, 'campaign persistence must not add or overwrite RTS identity fields');
 
     await page.locator('.tk-back').click();
     await page.locator('.entry-login input').waitFor();
