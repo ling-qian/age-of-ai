@@ -274,7 +274,9 @@ async function testOriginalRtsMultiplayer(browser) {
       await trainButton.waitFor();
       await trainButton.click();
 
-      await waitUntil(() => {
+      await waitUntil(async () => {
+        messagesA = await readBrowserMessages(pageA);
+        messagesB = await readBrowserMessages(pageB);
         const a = latestSnapshot(messagesA);
         const b = latestSnapshot(messagesB);
         const count = (snapshot) => (snapshot?.units ?? []).filter(
