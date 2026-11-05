@@ -270,7 +270,7 @@ test('scheme chance clamps to its 10% minimum and 90% maximum', () => {
 });
 
 test('attack casualties follow the formula, stop at remaining troops, and never go negative', () => {
-  const seed = seedForRoll((roll) => roll < 90);
+  const seed = seedForRoll((roll) => roll < 60);
   const state = makeBattle(
     [unit('p1', 'player', { stats: { martial: 100, leadership: 100 } }), unit('p2', 'player'), unit('p3', 'player')],
     [unit('e1', 'enemy', { troops: 1, maxTroops: 1, stats: { leadership: 1 } }), unit('e2', 'enemy'), unit('e3', 'enemy')],
@@ -292,7 +292,7 @@ test('attack casualties follow the formula, stop at remaining troops, and never 
 });
 
 test('Arrow increases outgoing casualties and Square reduces incoming casualties', () => {
-  const seed = seedForRoll((roll) => roll < 90);
+  const seed = seedForRoll((roll) => roll < 60);
   const make = (playerFormation: Formation, enemyFormation: Formation) => {
     const state = makeBattle(
       [unit('p1', 'player', { stats: { martial: 100, leadership: 100 } }), unit('p2', 'player'), unit('p3', 'player')],
@@ -337,7 +337,7 @@ test('initiative sorts Leadership descending and breaks ties by code-point unit 
 });
 
 test('a unit defeated before its initiative has its pending order skipped', () => {
-  const seed = seedForRoll((roll) => roll < 90);
+  const seed = seedForRoll((roll) => roll < 60);
   const state = makeBattle(
     [unit('p1', 'player', { stats: { martial: 100, leadership: 100 } }), unit('p2', 'player'), unit('p3', 'player')],
     [unit('e1', 'enemy', { troops: 1, maxTroops: 1, stats: { leadership: 1 } }), unit('e2', 'enemy'), unit('e3', 'enemy')],
@@ -400,7 +400,7 @@ test('round validation rejects friendly targets, defeated actors, and defeated t
 });
 
 test('Scheme succeeds deterministically, consumes its one-use flag, and suppresses the target', () => {
-  const seed = seedForRoll((roll) => roll < 90);
+  const seed = seedForRoll((roll) => roll < 60);
   const state = makeBattle(
     [unit('p1', 'player', { stats: { intelligence: 100, leadership: 100 } }), unit('p2', 'player'), unit('p3', 'player')],
     [unit('e1', 'enemy', { stats: { intelligence: 1, leadership: 50 } }), unit('e2', 'enemy'), unit('e3', 'enemy')],
@@ -441,8 +441,8 @@ test('Scheme failure still consumes the one-use flag and does not suppress the t
 });
 
 test('successful Scheme suppression is consumed by the target next Attack at the 0.65 multiplier', () => {
-  const schemeSeed = seedForRoll((roll) => roll < 90);
-  const attackSeed = seedForRoll((roll) => roll < 90);
+  const schemeSeed = seedForRoll((roll) => roll < 60);
+  const attackSeed = seedForRoll((roll) => roll < 59);
   const initial = makeBattle(
     [
       unit('p1', 'player', { stats: { intelligence: 100, leadership: 100 } }),
@@ -476,8 +476,8 @@ test('successful Scheme suppression is consumed by the target next Attack at the
 });
 
 test('a Scheme applied after the target already acted persists to the target next attack', () => {
-  const schemeSeed = seedForRoll((roll) => roll < 90);
-  const attackSeed = seedForRoll((roll) => roll < 90);
+  const schemeSeed = seedForRoll((roll) => roll < 60);
+  const attackSeed = seedForRoll((roll) => roll < 59);
   const initial = makeBattle(
     [
       unit('p1', 'player', { stats: { intelligence: 100, leadership: 50 } }),
@@ -549,7 +549,7 @@ test('Wait grants guard, reduces the first successful incoming hit, and consumes
 });
 
 test('Wait guard persists across a round when the incoming attack misses', () => {
-  const missSeed = seedForRoll((roll) => roll >= 50);
+  const missSeed = seedForRoll((roll) => roll >= 54);
   const initial = makeBattle(
     [
       unit('p1', 'player', { stats: { leadership: 10 } }),
@@ -612,7 +612,7 @@ test('defeated enemies are never selected by the enemy AI', () => {
 });
 
 test('immediate victory occurs when the last enemy unit is defeated', () => {
-  const seed = seedForRollSequence(3, (rolls) => rolls.every((roll) => roll < 95));
+  const seed = seedForRollSequence(3, (rolls) => rolls.every((roll) => roll < 60));
   const state = makeBattle(
     [
       unit('p1', 'player', { stats: { martial: 100, leadership: 100 } }),
@@ -638,7 +638,7 @@ test('immediate victory occurs when the last enemy unit is defeated', () => {
 });
 
 test('immediate defeat occurs when the last player unit is defeated', () => {
-  const seed = seedForRollSequence(3, (rolls) => rolls.every((roll) => roll < 95));
+  const seed = seedForRollSequence(3, (rolls) => rolls.every((roll) => roll < 60));
   const state = makeBattle(
     [
       unit('p1', 'player', { troops: 1, maxTroops: 1, stats: { leadership: 1 } }),
@@ -721,7 +721,7 @@ test('different seeds can change rolls without changing hit chance or non-random
   const rolls = new Set<number>();
   for (let seed = 1; seed < 10_000 && seeds.length < 2; seed++) {
     const roll = nextRandom(seed).value;
-    if (roll < 90 && !rolls.has(roll)) {
+    if (roll < 60 && !rolls.has(roll)) {
       seeds.push(seed);
       rolls.add(roll);
     }
