@@ -155,69 +155,84 @@ function latestSnapshot(messages) {
   }
   return null;
 }
-function chooseTownCenterClickPoints(snapshot, owner) {
-  const townCenter = (snapshot?.buildings ?? []).find(
-    (building) => building.owner === owner && building.type === 'town_center',
-  );
-  assert.ok(townCenter, `missing Town Center for player ${owner} in authoritative snapshot`);
+function isClearGroundPoint(x, y, snapshot) {
+  const diagHit = (x0, y0, x1, y1, maxK) => {
+    const lo = Math.max(x0 - x, y0 - y, -0.05);
+    const hi = Math.min(x1 - x, y1 - y, maxK);
+    return lo <= hi;
+  };
 
-  const ownUnits = (snapshot?.units ?? []).filter((unit) => unit.owner === owner);
-  const offsets = [0.35, 0.65, 0.95, 1.25, 1.55, 1.85, 2.15, 2.45, 2.65];
-  const points = [];
+  for (const unit of snapshot.units ?? []) {
+    const radius = (unit.type === 'villager' ? 0.28 : unit.type === 'knight' ? 0.44 : 0.35) + 0.2;
+    const t = Math.max(0, Math.min(1.4, ((unit.x - x) + (unit.y - y)) / 2));
+    const dx = unit.x - (x + t);
+    const dy = unit.y - (y + t);
+    if (dx * dx + dy * dy <= radius * radius) return false;
+  }
 
-  for (const offsetX of offsets) {
-    for (const offsetY of offsets) {
-      const worldX = townCenter.tileX + offsetX;
-      const worldY = townCenter.tileY + offsetY;
-      let clearance = Number.POSITIVE_INFINITY;
+  for (const sheep of snapshot.sheep ?? []) {
+    const t = Math.max(0, Math.min(0.6, ((sheep.x - x) + (sheep.y - y)) / 2));
+    const dx = sheep.x - (x + t);
+    const dy = sheep.y - (y + t);
+    if (dx * dx + dy * dy <= 0.55 * 0.55) return false;
+  }
 
-      for (const unit of ownUnits) {
-        const unitHeight = 1.4;
-        const t = Math.max(0, Math.min(unitHeight, ((unit.x - worldX) + (unit.y - worldY)) / 2));
-        const dx = unit.x - (worldX + t);
-        const dy = unit.y - (worldY + t);
-        const radius = (unit.type === 'villager' ? 0.28 : unit.type === 'knight' ? 0.44 : 0.35) + 0.2;
-        clearance = Math.min(clearance, Math.hypot(dx, dy) - radius);
-      }
+  const buildingSizes = {
+    town_center: 3, house: 2, barracks: 3, archery_range: 3, stable: 3,
+    blacksmith: 3, market: 3, mill: 2, lumber_camp: 2, mining_camp: 2,
+    dock: 3, farm: 1, wall: 1, watch_tower: 1,
+  };
+  const buildingHeights = {
+    town_center: 1.2, house: 1.7, wall: 0.9, watch_tower: 3.4,
+    market: 2.0, mill: 1.6, lumber_camp: 1.4, mining_camp: 1.4,
+    farm: 0.2,
+  };
+  for (const building of snapshot.buildings ?? []) {
+    const size = buildingSizes[building.type] ?? 2;
+    if (diagHit(
+      building.tileX + (building.type === 'town_center' ? 0.25 : 0),
+      building.tileY + (building.type === 'town_center' ? 0.25 : 0),
+      building.tileX + size - (building.type === 'town_center' ? 0.25 : 0),
+      building.tileY + size - (building.type === 'town_center' ? 0.25 : 0),
+      buildingHeights[building.type] ?? 2.5,
+    )) return false;
+  }
 
-      points.push({ worldX, worldY, clearance });
+  const nodeHeights = { tree: 1.9, berry_bush: 0.4, gold_mine: 0.9, stone_mine: 0.9, fish: 0.5 };
+  for (const node of snapshot.nodes ?? []) {
+    if (diagHit(node.tileX, node.tileY, node.tileX + 1, node.tileY + 1, nodeHeights[node.type] ?? 0.5)) {
+      return false;
     }
   }
 
-  return points.sort((a, b) => b.clearance - a.clearance);
+  return true;
 }
 
+function chooseMoveTarget(map, snapshot, unit) {
+  const size = map?.size;
+  const tiles = map?.tiles;
+  assert.ok(Number.isInteger(size) && Array.isArray(tiles), 'missing map data in gameStart');
 
-async function waitUntil(predicate, timeoutMs, label) {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    if (await predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  throw new Error(`Timed out waiting for ${label}`);
-}
-
-async function installWebSocketProbe(page) {
-  await page.addInitScript(() => {
-    window.__m1WsFrames = [];
-    const NativeWebSocket = window.WebSocket;
-    class ProbedWebSocket extends NativeWebSocket {
-      constructor(url, protocols) {
-        if (protocols === undefined) super(url);
-        else super(url, protocols);
-        this.addEventListener('message', (event) => {
-          if (typeof event.data === 'string') window.__m1WsFrames.push(event.data);
-        });
+  const candidates = [];
+  for (let radius = 3; radius <= 9; radius++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dy = -radius; dy <= radius; dy++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+        const x = Math.floor(unit.x + dx) + 0.5;
+        const y = Math.floor(unit.y + dy) + 0.5;
+        const tx = Math.floor(x);
+        const ty = Math.floor(y);
+        if (tx < 1 || ty < 1 || tx >= size - 1 || ty >= size - 1) continue;
+        if (tiles[ty * size + tx] !== 0) continue; // TILE_GRASS
+        if (!isClearGroundPoint(x, y, snapshot)) continue;
+        candidates.push({ x, y, distance: Math.hypot(x - unit.x, y - unit.y) });
       }
     }
-    Object.setPrototypeOf(ProbedWebSocket, NativeWebSocket);
-    window.WebSocket = ProbedWebSocket;
-  });
-}
+    if (candidates.length) break;
+  }
 
-async function readBrowserMessages(page) {
-  const frames = await page.evaluate(() => window.__m1WsFrames ?? []);
-  return frames.map(parseFrame).filter(Boolean);
+  assert.ok(candidates.length, `no clear grass destination found near unit ${unit.id}`);
+  return candidates.sort((a, b) => a.distance - b.distance)[0];
 }
 
 async function testOriginalRtsMultiplayer(browser) {
@@ -291,54 +306,56 @@ async function testOriginalRtsMultiplayer(browser) {
     const playerBId = gameStartB?.you;
     assert.ok(playerAId !== undefined && playerBId !== undefined, 'both clients must receive authoritative player IDs');
 
-    // Each browser trains a villager through its own RTS HUD. Both clients must
-    // observe both authoritative state changes in their incoming snapshots.
-    for (const [page, playerId, label] of [
-      [pageA, playerAId, 'host'],
-      [pageB, playerBId, 'second player'],
+    // Each browser selects an idle villager through the existing HUD button,
+    // issues a right-click move order, and verifies both browsers observe the
+    // authoritative unit position change in server snapshots.
+    for (const [page, playerId, label, map] of [
+      [pageA, playerAId, 'host', gameStartA.map],
+      [pageB, playerBId, 'second player', gameStartB.map],
     ]) {
-      await page.keyboard.press('h');
+      messagesA = await readBrowserMessages(pageA);
+      messagesB = await readBrowserMessages(pageB);
+      const ownSnapshot = latestSnapshot(label === 'host' ? messagesA : messagesB);
+      const idleVillagers = (ownSnapshot?.units ?? [])
+        .filter((unit) => unit.owner === playerId && unit.type === 'villager' && unit.state === 'idle')
+        .sort((a, b) => a.id - b.id);
+      assert.ok(idleVillagers.length > 0, `${label} should have an idle villager to command`);
+      const selectedUnit = idleVillagers[0];
+
+      const idleButton = page.locator('.idle-vil:not(.hidden)');
+      await idleButton.waitFor({ timeout: 10_000 });
+      await idleButton.click();
+      await page.locator('.sel-panel:not(.hidden)').waitFor({ timeout: 5_000 });
+
+      const destination = chooseMoveTarget(map, ownSnapshot, selectedUnit);
       const canvasBox = await page.locator('#game-canvas').boundingBox();
       assert.ok(canvasBox, `${label} RTS canvas must have a measurable bounding box`);
-      const currentSnapshot = latestSnapshot(label === 'host' ? messagesA : messagesB);
-      const clickPoints = chooseTownCenterClickPoints(currentSnapshot, playerId);
-      const trainTitle = page.locator('.act-panel .act-title').filter({ hasText: 'Train' });
-      let selectedTownCenter = false;
 
-      // Click several points inside the 3x3 Town Center footprint, prioritizing
-      // points that are outside nearby villagers' visual hit radii. The RTS
-      // picker intentionally gives units priority over buildings.
-      for (const point of clickPoints.slice(0, 20)) {
-        const dx = point.worldX - (currentSnapshot.buildings.find(
-          (building) => building.owner === playerId && building.type === 'town_center',
-        ).tileX + 1.5);
-        const dy = point.worldY - (currentSnapshot.buildings.find(
-          (building) => building.owner === playerId && building.type === 'town_center',
-        ).tileY + 1.5);
-        const screenX = canvasBox.x + canvasBox.width / 2 + (dx - dy) * 32 * 1.1;
-        const screenY = canvasBox.y + canvasBox.height / 2 + (dx + dy) * 16 * 1.1;
-        await page.mouse.click(screenX, screenY);
-        if (await trainTitle.isVisible().catch(() => false)) {
-          selectedTownCenter = true;
-          break;
-        }
-        await page.waitForTimeout(120);
-      }
-      assert.ok(selectedTownCenter, `${label} browser could not select its Town Center from tested footprint points`);
-      const trainButton = page.locator('.act-panel .cmd-tile:not(.off)').first();
-      await trainButton.waitFor();
-      await trainButton.click();
+      // The idle-villager HUD action centers the camera on the selected unit.
+      const cameraX = Math.max(-4, Math.min(map.size + 4, selectedUnit.x));
+      const cameraY = Math.max(-4, Math.min(map.size + 4, selectedUnit.y));
+      const deltaX = destination.x - cameraX;
+      const deltaY = destination.y - cameraY;
+      const screenX = canvasBox.x + canvasBox.width / 2 + (deltaX - deltaY) * 32 * 1.1;
+      const screenY = canvasBox.y + canvasBox.height / 2 + (deltaX + deltaY) * 16 * 1.1;
+      assert.ok(
+        screenX >= canvasBox.x + 40 && screenX <= canvasBox.x + canvasBox.width - 40
+          && screenY >= canvasBox.y + 120 && screenY <= canvasBox.y + canvasBox.height - 170,
+        `${label} selected a move destination outside the unobstructed game area`,
+      );
 
+      await page.mouse.click(screenX, screenY, { button: 'right' });
       await waitUntil(async () => {
         messagesA = await readBrowserMessages(pageA);
         messagesB = await readBrowserMessages(pageB);
-        const a = latestSnapshot(messagesA);
-        const b = latestSnapshot(messagesB);
-        const count = (snapshot) => (snapshot?.units ?? []).filter(
-          (unit) => unit.owner === playerId && unit.type === 'villager',
-        ).length;
-        return count(a) >= 4 && count(b) >= 4;
-      }, 25_000, `both browsers to observe ${label} training a villager`);
+        const snapshotA = latestSnapshot(messagesA);
+        const snapshotB = latestSnapshot(messagesB);
+        const movedA = snapshotA?.units?.find((unit) => unit.id === selectedUnit.id);
+        const movedB = snapshotB?.units?.find((unit) => unit.id === selectedUnit.id);
+        const movedEnough = (unit) => unit && Math.hypot(unit.x - selectedUnit.x, unit.y - selectedUnit.y) > 0.35;
+        return movedEnough(movedA) && movedEnough(movedB);
+      }, 12_000, `both browsers to observe ${label} villager movement`);
+      console.log(`PASS — ${label} issued a move order; both browsers observed unit ${selectedUnit.id} move`);
     }
 
     // Chat verifies that both live browser sessions continue to exchange
