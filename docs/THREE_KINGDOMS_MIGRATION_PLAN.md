@@ -1,6 +1,6 @@
 # Three Kingdoms MVP Migration Plan
 
-Status: M1 is **ACCEPTED / FROZEN** at `107c62db98baa19267a4e8d131bc5443f35468fc` (preserved by `m1-freeze/107c62d`). M2-A implementation is **IN PROGRESS** on `feature/three-kingdoms-mvp`.
+Status: M1 is **ACCEPTED / FROZEN** at `107c62db98baa19267a4e8d131bc5443f35468fc` (preserved by `m1-freeze/107c62d`). M2-A deterministic battle engine is **COMPLETE / CI VERIFIED** on runtime candidate `2e2354aba1c9aedf932962e1d6711e65d42e207f`. Next: M2-B player-facing battle UI integration.
 
 ## Safety rules
 
@@ -38,7 +38,7 @@ No `server/`, `shared/`, RTS simulation, lobby, or WebSocket protocol files are 
 
 ## Mandatory M1 exit gate — all conditions required
 
-M1 exit gate result (2026-11-05): all four conditions passed on the same M1 candidate commit `107c62d` and the acceptance record was frozen. Evidence: [CI run 42052146411](https://github.com/ling-qian/age-of-ai/actions/runs/42052146411).
+M1 exit gate result (2026-11-05): all four conditions passed on the same M1 candidate commit `107c62d` and the acceptance record was frozen. Evidence: [CI run 42052146411](https://github.com/ling-qian/age-of-ai/actions/runs/42052146411). Do not rewrite the frozen M1 snapshot.
 
 1. **Automated code checks:** `npm ci`, `npm run typecheck`, `npm run build`, and `npm run smoke` all complete successfully.
 2. **Original RTS multiplayer regression:** run the original Age of AI with at least two separate clients; verify room creation/join, ready/start, live state synchronization, player actions, and a clean return/exit. The original multiplayer match must be genuinely playable, not merely compile.
@@ -58,14 +58,36 @@ The M1 code snapshot remains available on `m1-freeze/107c62d`. Any newly discove
 - Exit only through the mandatory M1 gate above.
 - **Current state: ACCEPTED / FROZEN.** The three opening choices, both save stages, reset isolation, and return to the original Age of AI entry were verified in browser automation.
 
-### M2-A — Tactical battle engine (IMPLEMENTATION IN PROGRESS)
-M1 is accepted and frozen. M2-A is being implemented as a standalone deterministic rules module before any UI integration:
-- [x] Added independent `client/src/three-kingdoms/battle-engine.ts` with the pure API `createBattle`, `chooseEnemyFormation`, `chooseEnemyOrders`, and `resolveRound`.
-- [x] Added headless deterministic rule tests at `scripts/three_kingdoms_battle_test.ts`, following the existing `tsx` pattern.
-- [x] Rules cover infantry/archer/cavalry counters, Arrow/Square formations, Leadership initiative, Attack/Scheme/Wait, deterministic PRNG, structured logs, victory/defeat, and 20-round adjudication.
-- [x] Added the M2-A test command to the validation workflow.
-- Keep this engine isolated from the existing Age of AI RTS battle/simulation engine. Do not rewrite, replace, or refactor the RTS battle engine for this feature.
-- Remaining M2-A exit work: complete the final full CI run on one candidate SHA, verify the source diff boundary, and record the final rule-test count.
+### M2-A — Tactical battle engine (**COMPLETE / CI VERIFIED**)
+
+Implemented on runtime candidate `2e2354aba1c9aedf932962e1d6711e65d42e207f`:
+
+- [x] Added isolated pure TypeScript rules module `client/src/three-kingdoms/battle-engine.ts`.
+- [x] Implemented a deterministic 3v3 state model with infantry, archers, and light cavalry.
+- [x] Implemented the class hit matrix, hit-chance modifiers and 5%/95% safety clamp, Arrow/Square formation modifiers, casualty calculation, Leadership initiative, and deterministic code-point tie-break.
+- [x] Implemented Attack, one-use Scheme, Wait/guard, status consumption, defeated-unit handling, and deterministic enemy formation/order selection.
+- [x] Implemented a serialized xorshift32 PRNG state and structured battle log entries.
+- [x] Implemented immediate victory/defeat and 20-round troop-total adjudication.
+- [x] Added `scripts/three_kingdoms_battle_test.ts` with 28 deterministic rule tests.
+- [x] Added the M2-A rule test to the validation workflow; run [42054617942](https://github.com/ling-qian/age-of-ai/actions/runs/42054617942) passed 28/28 rule tests, typecheck, production build, original RTS smoke, and the M1 browser regression.
+- [x] Diff audit confirms no changes to `server/`, `shared/`, original RTS screens/simulation, or WebSocket protocol.
+
+M2-A is the engine/rules milestone only. It is not yet imported into the Three Kingdoms UI.
+
+### M2-B — Player-facing tactical battle integration (**NEXT**)
+
+Wire the already-tested engine into the existing Three Kingdoms mode without changing the original Age of AI RTS:
+
+- Create a dedicated battle screen or panel within the existing Three Kingdoms route.
+- Start a battle from the Yellow Turban briefing using a fixed, explicit 3v3 scenario fixture.
+- Present player formation selection (Arrow/Square) and one Attack/Scheme/Wait order for each living player unit.
+- Provide valid living enemy targets for Attack/Scheme; do not allow friendly or defeated targets.
+- Have the engine choose enemy formation and orders deterministically, then resolve the round.
+- Render structured battle log entries as readable English messages in the UI layer; keep translation out of the engine.
+- Show troop counts, unit status (guarded/suppressed), current round, and victory/defeat/draw result.
+- Persist only the Three Kingdoms campaign/battle state in its dedicated key; do not alter the RTS name/settings keys.
+- Add UI-flow browser tests for order submission, round resolution, status visibility, result handling, refresh/reload, and return to Age of AI.
+- Keep M2-B client-only: no `server/`, `shared/`, RTS simulation, lobby, or WebSocket protocol changes.
 
 ### M3 — Campaign loop
 - Five-city node map, city ownership, recruit roster, battle results, and next-event unlocks.
