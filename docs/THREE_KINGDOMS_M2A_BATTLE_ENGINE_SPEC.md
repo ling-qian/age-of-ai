@@ -1,13 +1,13 @@
 # Three Kingdoms M2-A — Tactical Battle Engine Specification
 
-**Status: PREPARATION ONLY — M2 IMPLEMENTATION BLOCKED**
+**Status: IMPLEMENTATION IN PROGRESS — M1 ACCEPTED / FROZEN**
 
-This document prepares the isolated M2-A implementation. It does not authorize starting M2 code. M1 must first pass every gate in `docs/THREE_KINGDOMS_M1_ACCEPTANCE.md`, be tested on one candidate commit, and be recorded as accepted/frozen. Until then, do not add dependencies, change runtime files, or implement battle logic.
+M1 passed all automated and real-browser CI gates on candidate `107c62db98baa19267a4e8d131bc5443f35468fc` and is frozen at branch `m1-freeze/107c62d`. The acceptance evidence is recorded in `docs/THREE_KINGDOMS_M1_ACCEPTANCE.md` and [CI run 42052146411](https://github.com/ling-qian/age-of-ai/actions/runs/42052146411). M2-A implementation is authorized on `feature/three-kingdoms-mvp`; keep the frozen M1 branch unchanged.
 
 ## 1. Repository inspection baseline
 
 Inspected branch: `feature/three-kingdoms-mvp`  
-Inspected branch HEAD: `453a4d7805b4722a33dc09ee80286cdff8d7b428`  
+M1 freeze SHA: `107c62db98baa19267a4e8d131bc5443f35468fc`  \nCurrent M2-A candidate at this documentation update: `2e2354aba1c9aedf932962e1d6711e65d42e207f`  
 M1 baseline: 10 commits ahead of `aoai/alpha-baseline`, with changes limited to:
 
 - `client/src/main.ts`
@@ -28,13 +28,13 @@ Current stack:
 - Existing root checks: `npm ci`, `npm run typecheck`, `npm run build`, `npm run smoke`.
 - Existing headless TypeScript regression scripts use `npx tsx scripts/..._test.ts`.
 
-The M1 acceptance record currently has all automated, browser-regression, and freeze fields marked **PENDING**. No M1 runtime acceptance is inferred from source review.
+M1 acceptance is **ACCEPTED / FROZEN** based on the same-candidate command checks and two isolated Chromium browser contexts running the actual local Node/WebSocket service and Vite client. Public production deployment and physical-device testing are explicitly not claimed.
 
 ## 2. Non-negotiable isolation boundary
 
 M2-A is a deterministic, single-player tactical rules module. It must not reuse or modify the real-time RTS simulation.
 
-Allowed M2-A implementation paths (after M1 freeze):
+Allowed M2-A implementation paths (now authorized after M1 freeze):
 
 - Add `client/src/three-kingdoms/battle-engine.ts`.
 - Add a focused headless test, preferably `scripts/three_kingdoms_battle_test.ts`, following the repository's existing `tsx` regression-script convention.
@@ -275,9 +275,9 @@ The UI/locales layer maps these entries to English sentences. Do not store only 
 
 ## 7. Test and local development preparation
 
-No test dependency is required for the preparation phase. The repository already uses headless TypeScript scripts run with `npx tsx`; M2-A should follow that convention unless a separate test-runner decision is approved after M1 freeze.
+No new test dependency is added. The repository already uses headless TypeScript scripts run with `npx tsx`; M2-A follows that convention.
 
-Proposed focused test command after implementation:
+Focused M2-A test command:
 
 ```bash
 npx tsx scripts/three_kingdoms_battle_test.ts
@@ -299,7 +299,7 @@ The test script must exit non-zero on any failure. It must cover:
 - Different seeds can produce different rolls without changing non-random calculations.
 - Engine functions do not mutate the input state.
 
-Before M1 is frozen, keep using its existing acceptance commands only:
+M1 is frozen. The current validation workflow now runs the M1 gates plus the focused M2-A rules test:
 
 ```bash
 npm ci
@@ -308,7 +308,7 @@ npm run build
 npm run smoke
 ```
 
-After M2-A code exists, add the focused battle test to the candidate verification checklist. Do not claim test completion until commands have actually been run.
+The focused battle test is wired into `.github/workflows/three-kingdoms-m1-validation.yml` as `M2-A deterministic battle rules`. Record only the final run that passes on the exact candidate SHA.
 
 ## 8. M2-A acceptance criteria
 
@@ -326,6 +326,6 @@ M2-A is complete only when:
 
 ## 9. Go / no-go
 
-**Current decision: NO-GO for M2-A implementation.**
+**Current decision: GO — M2-A implementation is underway.**
 
-The current M1 acceptance record is still PENDING. Complete the automated checks and the required two-client browser regressions first, record the tested candidate SHA and evidence, and freeze M1. This document is preparation only; no runtime code, dependency, build configuration, save key, RTS file, or network protocol is changed by it.
+The pure TypeScript engine is implemented at `client/src/three-kingdoms/battle-engine.ts`, and deterministic headless coverage is in `scripts/three_kingdoms_battle_test.ts`. It is not yet integrated into the Three Kingdoms screen; that is a later UI integration task. Runtime scope remains isolated: no new dependencies, no backend route or WebSocket messages, and no changes to `server/`, `shared/`, or existing RTS gameplay files.
