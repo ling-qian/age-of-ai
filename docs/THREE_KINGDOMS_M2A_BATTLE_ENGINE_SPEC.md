@@ -1,8 +1,8 @@
 # Three Kingdoms M2-A — Tactical Battle Engine Specification
 
-**Status: IMPLEMENTATION IN PROGRESS — M1 ACCEPTED / FROZEN**
+**Status: M2-A COMPLETE / CI VERIFIED — M1 ACCEPTED / FROZEN**
 
-M1 passed all automated and real-browser CI gates on candidate `107c62db98baa19267a4e8d131bc5443f35468fc` and is frozen at branch `m1-freeze/107c62d`. The acceptance evidence is recorded in `docs/THREE_KINGDOMS_M1_ACCEPTANCE.md` and [CI run 42052146411](https://github.com/ling-qian/age-of-ai/actions/runs/42052146411). M2-A implementation is authorized on `feature/three-kingdoms-mvp`; keep the frozen M1 branch unchanged.
+M1 passed all automated and real-browser CI gates on candidate `107c62db98baa19267a4e8d131bc5443f35468fc` and is frozen at branch `m1-freeze/107c62d`. M2-A is implemented and verified on runtime candidate `2e2354aba1c9aedf932962e1d6711e65d42e207f`; [CI run 42054617942](https://github.com/ling-qian/age-of-ai/actions/runs/42054617942) completed successfully with 28 deterministic battle tests passing and the M1 browser regression suite passing. Later feature-branch commits only updated documentation; the frozen M1 branch remains unchanged.
 
 ## 1. Repository inspection baseline
 
@@ -308,24 +308,40 @@ npm run build
 npm run smoke
 ```
 
-The focused battle test is wired into `.github/workflows/three-kingdoms-m1-validation.yml` as `M2-A deterministic battle rules`. Record only the final run that passes on the exact candidate SHA.
+The focused battle test is wired into `.github/workflows/three-kingdoms-m1-validation.yml` as `M2-A deterministic battle rules`. It passed 28 tests with zero failures in run `42054617942` on the exact tested runtime candidate `2e2354a`.
 
-## 8. M2-A acceptance criteria
+## 8. M2-A acceptance result
 
-M2-A is complete only when:
+<badge color="success">COMPLETE — 28/28 tests passed</badge>
 
-- The battle engine is isolated under `client/src/three-kingdoms/`.
-- It supports a full 3v3 battle using all three unit classes.
-- The rules above are implemented and covered by deterministic tests.
-- Attack, Scheme, and Wait each have observable tactical consequences.
-- The battle always reaches victory, defeat, or the configured 20-round adjudication.
-- Typecheck and production build pass.
-- Existing RTS smoke test passes.
-- A source diff confirms no changes under `server/`, `shared/`, existing RTS screens, or WebSocket protocol.
-- M1 remains accepted/frozen; an M2-A change must not silently reopen or rewrite the M1 acceptance record.
+Verified on runtime candidate `2e2354aba1c9aedf932962e1d6711e65d42e207f`:
+
+- [x] The battle engine is isolated under `client/src/three-kingdoms/battle-engine.ts`.
+- [x] It builds a complete 3v3 battle state using infantry, archers, and light cavalry.
+- [x] The 3×3 class hit matrix, hit-chance calculation and clamp boundaries, deterministic hit boundary, casualties, and troop floors are covered.
+- [x] Arrow/Square formation trade-offs are covered.
+- [x] Leadership initiative and deterministic code-point ID tie-breaking are covered.
+- [x] Defeated actors and targets are skipped/rejected correctly.
+- [x] Invalid, duplicate, missing, friendly-target, and defeated-unit orders are rejected.
+- [x] Scheme success/failure, one-use behavior, suppression consumption, and persistence until the target's next Attack are covered.
+- [x] Wait guard reduction, consumption, and persistence after a miss are covered.
+- [x] Immediate victory/defeat and 20-round victory/defeat/draw adjudication are covered.
+- [x] Same seed and same orders produce byte-equivalent state/log output; different seeds can change rolls.
+- [x] Engine functions do not mutate their input state.
+- [x] `npm run typecheck`, `npm run build`, and the original RTS WebSocket smoke test pass.
+- [x] The M1 real-browser regression suite passes on the same runtime candidate.
+- [x] Source diff confirms no changes under `server/`, `shared/`, existing RTS screens, existing RTS simulation, or WebSocket protocol.
+- [x] M1 remains accepted/frozen at `107c62d`; its frozen source branch was not modified by M2-A.
+
+**Evidence:** [GitHub Actions run 42054617942](https://github.com/ling-qian/age-of-ai/actions/runs/42054617942) — `M2-A BATTLE ENGINE TESTS: 28 passed, 0 failed`; `ALL M1 BROWSER REGRESSION CHECKS PASSED`.
+
+Scope clarification: M2-A delivers the pure battle rules engine and its deterministic tests. It does not yet connect the engine to the Three Kingdoms screen or provide the player-facing battle UI; those belong to M2-B.
 
 ## 9. Go / no-go
 
-**Current decision: GO — M2-A implementation is underway.**
+**Decision: GO — M2-A engine milestone complete.**
 
-The pure TypeScript engine is implemented at `client/src/three-kingdoms/battle-engine.ts`, and deterministic headless coverage is in `scripts/three_kingdoms_battle_test.ts`. It is not yet integrated into the Three Kingdoms screen; that is a later UI integration task. Runtime scope remains isolated: no new dependencies, no backend route or WebSocket messages, and no changes to `server/`, `shared/`, or existing RTS gameplay files.
+The pure deterministic rules engine is implemented at `client/src/three-kingdoms/battle-engine.ts`. The headless rule suite is at `scripts/three_kingdoms_battle_test.ts` and passes 28/28 tests. The full validation workflow also passes typecheck, production build, existing RTS smoke, and the M1 two-browser regression.
+
+The next distinct milestone is **M2-B: wire the engine into the existing Three Kingdoms screen**. Do not add combat to the existing RTS, add a server route, or introduce a WebSocket message. Preserve the M1 freeze branch and keep all Three Kingdoms combat state in its dedicated local campaign save namespace.
+
