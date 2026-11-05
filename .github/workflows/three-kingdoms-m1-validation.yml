@@ -38,3 +38,12 @@ jobs:
 
       - name: Multiplayer WebSocket smoke test
         run: npm run smoke
+
+      - name: Install temporary Playwright runner
+        run: npm install --no-save --package-lock=false playwright
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run M1 real-browser regression
+        run: node scripts/m1_browser_regression.mjs
