@@ -220,8 +220,8 @@ test('all nine unit-class hit-matrix cells are applied exactly', () => {
 
 test('hit-chance formula reaches its legal lower and upper values under valid stat bounds', () => {
   const lowBattle = makeBattle(
-    [unit('p1', 'player', { unitClass: 'infantry', stats: { martial: 1 } }), unit('p2', 'player'), unit('p3', 'player')],
-    [unit('e1', 'enemy', { unitClass: 'archer', stats: { leadership: 100 } }), unit('e2', 'enemy'), unit('e3', 'enemy')],
+    [unit('p1', 'player', { unitClass: 'archer', stats: { martial: 1 } }), unit('p2', 'player'), unit('p3', 'player')],
+    [unit('e1', 'enemy', { unitClass: 'infantry', stats: { leadership: 100 } }), unit('e2', 'enemy'), unit('e3', 'enemy')],
   );
   const highBattle = makeBattle(
     [unit('p1', 'player', { unitClass: 'infantry', stats: { martial: 100 } }), unit('p2', 'player'), unit('p3', 'player')],
@@ -458,6 +458,7 @@ test('successful Scheme suppression is consumed by the target next Attack at the
   );
   const schemed = withOrders(initial, {
     p1: { unitId: 'p1', type: 'scheme', targetId: 'e1' },
+    p2: { unitId: 'p2', type: 'attack', targetId: 'e2' },
   });
   assert.equal(schemed.units.find((candidate) => candidate.id === 'e1')?.suppressed, true);
 
@@ -476,12 +477,12 @@ test('successful Scheme suppression is consumed by the target next Attack at the
 });
 
 test('a Scheme applied after the target already acted persists to the target next attack', () => {
-  const schemeSeed = seedForRoll((roll) => roll < 60);
+  const schemeSeed = seedForRollSequence(2, (rolls) => rolls[0] < 59 && rolls[1] < 90);
   const attackSeed = seedForRoll((roll) => roll < 59);
   const initial = makeBattle(
     [
       unit('p1', 'player', { stats: { intelligence: 100, leadership: 50 } }),
-      unit('p2', 'player', { stats: { leadership: 10 } }),
+      unit('p2', 'player', { stats: { leadership: 10 }, troops: 500, maxTroops: 500 }),
       unit('p3', 'player'),
     ],
     [
@@ -494,6 +495,7 @@ test('a Scheme applied after the target already acted persists to the target nex
   const round1 = withOrders(initial, {
     e1: { unitId: 'e1', type: 'attack', targetId: 'p2' },
     p1: { unitId: 'p1', type: 'scheme', targetId: 'e1' },
+    p2: { unitId: 'p2', type: 'attack', targetId: 'e2' },
   });
   assert.equal(round1.units.find((candidate) => candidate.id === 'e1')?.suppressed, true);
 
@@ -501,7 +503,7 @@ test('a Scheme applied after the target already acted persists to the target nex
   const round2 = withOrders(round2State, {
     e1: { unitId: 'e1', type: 'attack', targetId: 'p2' },
   });
-  const loss = round2.log.find((entry) => entry.type === 'troops_lost' && entry.targetId === 'p2');
+  const loss = round2.log.find((entry) => entry.type === 'troops_lost' && entry.targetId === 'p2' && entry.round === 2);
   assert.ok(loss && loss.type === 'troops_lost');
   const attacker = round2State.units.find((candidate) => candidate.id === 'e1')!;
   const defender = round2State.units.find((candidate) => candidate.id === 'p2')!;
