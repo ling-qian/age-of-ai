@@ -16,6 +16,7 @@ function start(command, args, label) {
     cwd: ROOT,
     env: { ...process.env, PORT: String(SERVER_PORT) },
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
   });
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString(); });
@@ -307,7 +308,11 @@ main()
   .finally(() => {
     for (const { child, label } of children) {
       if (child.exitCode === null) {
-        child.kill('SIGTERM');
+        try {
+          process.kill(-child.pid, 'SIGTERM');
+        } catch {
+          child.kill('SIGTERM');
+        }
         console.log(`Stopped ${label}`);
       }
     }
