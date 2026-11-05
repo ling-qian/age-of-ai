@@ -430,6 +430,90 @@ async function testOriginalRtsMultiplayer(browser) {
   }
 }
 
+async function testThreeKingdomsBattle(browser) {
+  const context = await browser.newContext({ locale: 'en-US' });
+  const page = await context.newPage();
+  const playerName = 'm2b-battle-ui';
+  const settingsValue = JSON.stringify({
+    lang: 'en',
+    musicVol: 0.2,
+    sfxVol: 0.3,
+    renderScale: 1,
+  });
+  const campaignSave = {
+    version: 1,
+    eventFlags: ['taoyuan_oath_resolved'],
+    resources: { morale: 5, supplies: 4, bond: 2, allies: 0 },
+    selectedChoiceId: 'swear_oath',
+    stage: 'battle-entry',
+    battleState: null,
+    playerFormation: 'arrow',
+    playerOrders: [],
+  };
+
+  await page.addInitScript(({ playerName, settingsValue, campaignSave }) => {
+    localStorage.setItem('ageofai:name', playerName);
+    localStorage.setItem('ageofai:settings', settingsValue);
+    localStorage.setItem('ageofai:three-kingdoms:campaign:v1', JSON.stringify(campaignSave));
+  }, { playerName, settingsValue, campaignSave });
+  collectSocketMessages(page, [], 'M2-B battle UI');
+
+  try {
+    await page.goto(BASE_URL);
+    await page.locator('.tk-launch-btn').click();
+    await page.locator('.tk-event-title').filter({ hasText: 'The Yellow Turban Rebellion' }).waitFor();
+    await page.locator('.tk-begin-battle').click();
+
+    await page.locator('.tk-battle-panel').waitFor();
+    assert.equal(await page.locator('.tk-battle-unit.player').count(), 3, 'battle UI must show three player units');
+    assert.equal(await page.locator('.tk-battle-unit.enemy').count(), 3, 'battle UI must show three enemy units');
+    assert.equal(await page.locator('.tk-order-type').count(), 3, 'each living player unit must receive one order control');
+
+    // Configure all three order types and a non-default formation using the
+    // real DOM controls. Each change persists the order into the campaign save.
+    await page.locator('.tk-formation-select').selectOption('square');
+    await page.locator('.tk-order-target[data-unit-id="player-liu-bei"]').selectOption('enemy-raider-captain');
+    await page.locator('.tk-order-type[data-unit-id="player-guan-yu"]').selectOption('scheme');
+    await page.locator('.tk-order-target[data-unit-id="player-guan-yu"]').selectOption('enemy-rebel-archer');
+    await page.locator('.tk-order-type[data-unit-id="player-zhang-fei"]').selectOption('wait');
+
+    await page.locator('.tk-resolve-round').click();
+    await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 2' }).waitFor();
+    const persisted = await page.evaluate(() => JSON.parse(
+      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+    ));
+    assert.equal(persisted.stage, 'battle', 'the battle stage must be saved');
+    assert.equal(persisted.battleState.round, 2, 'resolving a round must advance the saved round');
+    assert.equal(persisted.battleState.formations.player, 'square', 'the selected formation must be saved');
+    assert.ok(persisted.battleState.log.some((entry) => entry.type === 'unit_attacked'), 'Attack must create a structured battle log entry');
+    assert.ok(persisted.battleState.log.some((entry) => entry.type === 'scheme_attempted'), 'Scheme must create a structured battle log entry');
+    assert.ok(persisted.battleState.log.some((entry) => entry.type === 'unit_guarded'), 'Wait must create a guarded log entry');
+    assert.equal(persisted.battleState.units.length, 6, 'the save must retain all six battle units');
+
+    const logCount = persisted.battleState.log.length;
+    await page.reload();
+    await page.locator('.tk-launch-btn').click();
+    await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 2' }).waitFor();
+    assert.equal(await page.locator('.tk-battle-unit.player').count(), 3, 'refresh must restore player units');
+    assert.equal(await page.locator('.tk-battle-unit.enemy').count(), 3, 'refresh must restore enemy units');
+    assert.equal(await page.locator('.tk-formation-select').inputValue(), 'square', 'refresh must restore the selected formation');
+    assert.equal(await page.locator('.tk-battle-log li').count(), Math.min(logCount, 30), 'refresh must restore the battle log');
+    const restored = await page.evaluate(() => JSON.parse(
+      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+    ));
+    assert.equal(restored.battleState.round, 2, 'refresh must not rerun or rewind the round');
+    assert.equal(restored.battleState.log.length, logCount, 'refresh must preserve the existing log exactly');
+    assert.equal(restored.name, undefined, 'campaign persistence must not add or overwrite RTS identity fields');
+
+    await page.locator('.tk-back').click();
+    await page.locator('.entry-login input').waitFor();
+    assert.equal(browserErrors.length, 0, 'M2-B battle UI must not raise browser runtime errors');
+    console.log('PASS — M2-B battle UI: 3v3 setup, formation, Attack/Scheme/Wait, round resolution, battle log, save and refresh');
+  } finally {
+    await context.close();
+  }
+}
+
 async function main() {
   const serverProcess = start('npm', ['run', 'dev', '--workspace', 'server'], 'RTS server');
   const viteProcess = start('npm', ['run', 'dev', '--workspace', 'client'], 'Vite client');
@@ -462,6 +546,7 @@ async function main() {
       Brotherhood: '1',
       'Local Allies': '2',
     }, 3);
+    await testThreeKingdomsBattle(browser);
     await testOriginalRtsMultiplayer(browser);
   } finally {
     await browser.close();
