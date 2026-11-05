@@ -178,6 +178,15 @@ function latestSnapshot(messages) {
   }
   return null;
 }
+
+async function waitUntil(predicate, timeoutMs, label) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+}
 function isClearGroundPoint(x, y, snapshot) {
   const diagHit = (x0, y0, x1, y1, maxK) => {
     const lo = Math.max(x0 - x, y0 - y, -0.05);
