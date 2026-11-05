@@ -169,10 +169,16 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
+/** Explicit hit-chance safety clamp; exported so both rule boundaries are testable. */
+export function clampHitChance(value: number): number {
+  if (!Number.isFinite(value)) fail('hit chance must be finite');
+  return clamp(value, BATTLE_RULES.hitChanceMin, BATTLE_RULES.hitChanceMax);
+}
+
 export function calculateHitChance(attacker: BattleUnit, defender: BattleUnit): number {
   const base = BATTLE_RULES.classHitChance[attacker.unitClass][defender.unitClass];
   const leadershipAdjustment = Math.round((attacker.stats.martial - defender.stats.leadership) * 0.10);
-  return clamp(base + leadershipAdjustment, BATTLE_RULES.hitChanceMin, BATTLE_RULES.hitChanceMax);
+  return clampHitChance(base + leadershipAdjustment);
 }
 
 export function calculateSchemeChance(caster: BattleUnit, target: BattleUnit): number {
