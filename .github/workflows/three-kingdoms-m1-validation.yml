@@ -1,4 +1,4 @@
-name: Three Kingdoms M1 validation
+name: Three Kingdoms validation
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   m1-automated-gates:
-    name: M1 automated gates
+    name: Three Kingdoms automated gates
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -38,6 +38,9 @@ jobs:
 
       - name: Multiplayer WebSocket smoke test
         run: npm run smoke
+
+      - name: M2-A deterministic battle rules
+        run: npx tsx scripts/three_kingdoms_battle_test.ts
 
       - name: Install temporary Playwright runner
         run: npm install --no-save --package-lock=false playwright
