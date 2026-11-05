@@ -219,29 +219,35 @@ async function testOriginalRtsMultiplayer(browser) {
     );
 
     const gameStartA = messagesA.find((m) => m.type === 'gameStart');
+    const gameStartB = messagesB.find((m) => m.type === 'gameStart');
     const playerAId = gameStartA?.you;
-    assert.ok(playerAId !== undefined, 'host must receive its authoritative player ID');
+    const playerBId = gameStartB?.you;
+    assert.ok(playerAId !== undefined && playerBId !== undefined, 'both clients must receive authoritative player IDs');
 
-    // Center the camera on the Town Center, select it, and enqueue a villager
-    // through the actual RTS HUD. Both browsers must observe the newly trained
-    // unit in authoritative snapshots.
-    await pageA.keyboard.press('h');
-    const canvasBox = await pageA.locator('#game-canvas').boundingBox();
-    assert.ok(canvasBox, 'RTS canvas must have a measurable bounding box');
-    await pageA.mouse.click(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
-    await pageA.locator('.act-panel .act-title').filter({ hasText: 'Train' }).waitFor({ timeout: 10_000 });
-    const trainButton = pageA.locator('.act-panel .cmd-tile:not(.off)').first();
-    await trainButton.waitFor();
-    await trainButton.click();
+    // Each browser trains a villager through its own RTS HUD. Both clients must
+    // observe both authoritative state changes in their incoming snapshots.
+    for (const [page, playerId, label] of [
+      [pageA, playerAId, 'host'],
+      [pageB, playerBId, 'second player'],
+    ]) {
+      await page.keyboard.press('h');
+      const canvasBox = await page.locator('#game-canvas').boundingBox();
+      assert.ok(canvasBox, `${label} RTS canvas must have a measurable bounding box`);
+      await page.mouse.click(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
+      await page.locator('.act-panel .act-title').filter({ hasText: 'Train' }).waitFor({ timeout: 10_000 });
+      const trainButton = page.locator('.act-panel .cmd-tile:not(.off)').first();
+      await trainButton.waitFor();
+      await trainButton.click();
 
-    await waitUntil(() => {
-      const a = latestSnapshot(messagesA);
-      const b = latestSnapshot(messagesB);
-      const count = (snapshot) => (snapshot?.units ?? []).filter(
-        (unit) => unit.owner === playerAId && unit.type === 'villager',
-      ).length;
-      return count(a) >= 4 && count(b) >= 4;
-    }, 25_000, 'both RTS browser clients to observe the newly trained villager');
+      await waitUntil(() => {
+        const a = latestSnapshot(messagesA);
+        const b = latestSnapshot(messagesB);
+        const count = (snapshot) => (snapshot?.units ?? []).filter(
+          (unit) => unit.owner === playerId && unit.type === 'villager',
+        ).length;
+        return count(a) >= 4 && count(b) >= 4;
+      }, 25_000, `both browsers to observe ${label} training a villager`);
+    }
 
     // Chat verifies that both live browser sessions continue to exchange
     // messages after the match starts.
