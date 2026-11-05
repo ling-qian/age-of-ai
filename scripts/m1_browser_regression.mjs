@@ -479,18 +479,22 @@ async function testThreeKingdomsBattle(browser) {
 
     await page.locator('.tk-resolve-round').click();
     await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 2' }).waitFor();
-    const persisted = await page.evaluate(() => JSON.parse(
-      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
-    ));
-    assert.equal(persisted.stage, 'battle', 'the battle stage must be saved');
-    assert.equal(persisted.battleState.round, 2, 'resolving a round must advance the saved round');
-    assert.equal(persisted.battleState.formations.player, 'square', 'the selected formation must be saved');
-    assert.ok(persisted.battleState.log.some((entry) => entry.type === 'unit_attacked'), 'Attack must create a structured battle log entry');
-    assert.ok(persisted.battleState.log.some((entry) => entry.type === 'scheme_attempted'), 'Scheme must create a structured battle log entry');
-    assert.ok(persisted.battleState.log.some((entry) => entry.type === 'unit_guarded'), 'Wait must create a guarded log entry');
-    assert.equal(persisted.battleState.units.length, 6, 'the save must retain all six battle units');
+    const persisted = await page.evaluate(() => ({
+      campaign: JSON.parse(localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null'),
+      name: localStorage.getItem('ageofai:name'),
+      settings: localStorage.getItem('ageofai:settings'),
+    }));
+    assert.equal(persisted.campaign.stage, 'battle', 'the battle stage must be saved');
+    assert.equal(persisted.campaign.battleState.round, 2, 'resolving a round must advance the saved round');
+    assert.equal(persisted.campaign.battleState.formations.player, 'square', 'the selected formation must be saved');
+    assert.ok(persisted.campaign.battleState.log.some((entry) => entry.type === 'unit_attacked'), 'Attack must create a structured battle log entry');
+    assert.ok(persisted.campaign.battleState.log.some((entry) => entry.type === 'scheme_attempted'), 'Scheme must create a structured battle log entry');
+    assert.ok(persisted.campaign.battleState.log.some((entry) => entry.type === 'unit_guarded'), 'Wait must create a guarded log entry');
+    assert.equal(persisted.campaign.battleState.units.length, 6, 'the save must retain all six battle units');
+    assert.equal(persisted.name, playerName, 'battle save must preserve the original RTS name');
+    assert.equal(persisted.settings, settingsValue, 'battle save must preserve the original RTS preferences');
 
-    const logCount = persisted.battleState.log.length;
+    const logCount = persisted.campaign.battleState.log.length;
     await page.reload();
     await page.locator('.tk-launch-btn').click();
     await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 2' }).waitFor();
@@ -498,11 +502,15 @@ async function testThreeKingdomsBattle(browser) {
     assert.equal(await page.locator('.tk-battle-unit.enemy').count(), 3, 'refresh must restore enemy units');
     assert.equal(await page.locator('.tk-formation-select').inputValue(), 'square', 'refresh must restore the selected formation');
     assert.equal(await page.locator('.tk-battle-log li').count(), Math.min(logCount, 30), 'refresh must restore the battle log');
-    const restored = await page.evaluate(() => JSON.parse(
-      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
-    ));
-    assert.equal(restored.battleState.round, 2, 'refresh must not rerun or rewind the round');
-    assert.equal(restored.battleState.log.length, logCount, 'refresh must preserve the existing log exactly');
+    const restored = await page.evaluate(() => ({
+      campaign: JSON.parse(localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null'),
+      name: localStorage.getItem('ageofai:name'),
+      settings: localStorage.getItem('ageofai:settings'),
+    }));
+    assert.equal(restored.campaign.battleState.round, 2, 'refresh must not rerun or rewind the round');
+    assert.equal(restored.campaign.battleState.log.length, logCount, 'refresh must preserve the existing log exactly');
+    assert.equal(restored.name, playerName, 'refresh must preserve the RTS name');
+    assert.equal(restored.settings, settingsValue, 'refresh must preserve RTS preferences');
     assert.equal(restored.name, undefined, 'campaign persistence must not add or overwrite RTS identity fields');
 
     await page.locator('.tk-back').click();
