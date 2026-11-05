@@ -266,10 +266,16 @@ async function testOriginalRtsMultiplayer(browser) {
 }
 
 async function main() {
-  start('npm', ['run', 'dev:server'], 'RTS server');
-  start('npm', ['run', 'dev:client', '--', '--host', '127.0.0.1'], 'Vite client');
-  await waitForPort(SERVER_PORT);
-  await waitForPort(CLIENT_PORT);
+  const serverProcess = start('npm', ['run', 'dev', '--workspace', 'server'], 'RTS server');
+  const viteProcess = start('npm', ['run', 'dev', '--workspace', 'client'], 'Vite client');
+  await waitForPort(SERVER_PORT, 30_000).catch((error) => {
+    console.error(`RTS server output before startup failure:\\n${serverProcess.output}`);
+    throw error;
+  });
+  await waitForPort(CLIENT_PORT, 30_000).catch((error) => {
+    console.error(`Vite output before startup failure:\\n${viteProcess.output}`);
+    throw error;
+  });
 
   const browser = await chromium.launch({ headless: true });
   try {
