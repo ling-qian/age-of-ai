@@ -1,0 +1,40 @@
+name: Three Kingdoms M1 validation
+
+on:
+  push:
+    branches:
+      - feature/three-kingdoms-mvp
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  m1-automated-gates:
+    name: M1 automated gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build client
+        run: npm run build
+
+      - name: Multiplayer WebSocket smoke test
+        run: npm run smoke
