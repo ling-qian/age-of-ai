@@ -398,8 +398,22 @@ async function testOriginalRtsMultiplayer(browser) {
     await pageA.keyboard.press('Enter');
     await pageB.locator('.chat-msg').filter({ hasText: marker }).waitFor({ timeout: 5_000 });
 
+    // Exercise the existing in-game exit flow from a real browser. The host
+    // confirms "leave room", returns to the lobby, and the other player sees
+    // the game-over screen and can independently return to the same lobby.
+    await pageA.locator('#settings-gear').click();
+    const leaveButton = pageA.locator('.opt-card .btn.danger');
+    await leaveButton.waitFor({ timeout: 5_000 });
+    await leaveButton.click(); // first click requests confirmation in-game
+    await leaveButton.click(); // second click confirms leaving the room
+    await pageA.locator('.lobby-create').waitFor({ timeout: 8_000 });
+
+    await pageB.locator('.result-title').waitFor({ timeout: 8_000 });
+    await pageB.locator('body > .overlay:not(.hidden) .btn.primary').click();
+    await pageB.locator('.lobby-create').waitFor({ timeout: 8_000 });
+
     assert.equal(browserErrors.length, 0, `browser runtime errors: ${browserErrors.join('; ')}`);
-    console.log('PASS — original RTS: two browsers joined, started, trained a unit, and observed synchronized state/chat');
+    console.log('PASS — original RTS: two browsers joined, started, synchronized moves/chat, and both returned to lobby');
   } finally {
     await Promise.all([contextA.close(), contextB.close()]);
   }
