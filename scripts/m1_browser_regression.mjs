@@ -477,8 +477,24 @@ async function testThreeKingdomsBattle(browser) {
     await page.locator('.tk-order-target[data-unit-id="player-guan-yu"]').selectOption('enemy-rebel-archer');
     await page.locator('.tk-order-type[data-unit-id="player-zhang-fei"]').selectOption('wait');
 
+    const pending = await page.evaluate(() => JSON.parse(
+      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+    ));
+    console.log('M2-B pending player orders:', JSON.stringify(pending?.playerOrders));
+    assert.equal(pending?.playerOrders?.length, 3, 'the UI must persist one order per player unit before round resolution');
+
     await page.locator('.tk-resolve-round').click();
-    await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 2' }).waitFor();
+    try {
+      await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 2' }).waitFor({ timeout: 10_000 });
+    } catch (error) {
+      console.error('M2-B battle error panel:', await page.locator('.tk-battle-error').textContent().catch(() => '(none)'));
+      console.error('M2-B battle UI text:', await page.locator('.tk-battle-panel').innerText().catch(() => '(battle panel missing)'));
+      console.error('M2-B browser errors:', browserErrors.join(' | ') || '(none)');
+      console.error('M2-B persisted battle state:', JSON.stringify(await page.evaluate(() => JSON.parse(
+        localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+      ))));
+      throw error;
+    }
     const persisted = await page.evaluate(() => ({
       campaign: JSON.parse(localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null'),
       name: localStorage.getItem('ageofai:name'),
