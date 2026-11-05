@@ -84,6 +84,7 @@ Proposed public API:
 
 ```ts
 createBattle(config: BattleConfig, seed: number): BattleState
+chooseEnemyFormation(state: BattleState): Formation
 chooseEnemyOrders(state: BattleState): UnitOrder[]
 resolveRound(state: BattleState, input: RoundInput): BattleState
 ```
@@ -134,6 +135,11 @@ interface BattleState {
   log: BattleLogEntry[];
 }
 ```
+
+interface RoundInput {
+  formations: Record<BattleSide, Formation>;
+  orders: UnitOrder[]; // one order for every living unit on both sides
+}
 
 The final implementation may refine field names, but it must preserve the semantics and the serialization-friendly shape.
 
@@ -228,8 +234,8 @@ Wait causes no attack. It sets `guarded = true`. The next successful incoming at
 
 ### 5.6 Initiative and round resolution
 
-1. Validate both sides' formation choices and orders before mutating anything.
-2. Every living unit must submit exactly one order. Defeated units must not submit orders.
+1. The caller chooses the player's formation and player orders; it obtains the enemy formation and enemy orders from the deterministic AI helpers. The caller passes both formations and the combined order list in `RoundInput`.
+2. Validate both formations and every order before mutating anything. Every living unit must submit exactly one order. Defeated units must not submit orders.
 3. Combine both sides' orders and sort by Leadership descending; break ties with a deterministic code-point comparison of unit ID (never locale-dependent sorting).
 4. Resolve orders in that order. If an acting unit was defeated before its initiative, skip its order.
 5. If a side has no living units, finish immediately with the other side as winner.
@@ -243,13 +249,14 @@ Store the PRNG state in `BattleState`. Provide a small pure `nextRandom(state): 
 
 ### 5.8 Enemy AI v0.1
 
-Enemy order selection must be deterministic and intentionally simple:
+Enemy AI selection must be deterministic and intentionally simple:
 
-1. For each living enemy unit, if it has not used Scheme, Intelligence is at least 65, and a living player target exists, Scheme the living player unit with the highest Martial; tie-break by ID.
-2. Otherwise Attack the living player unit with the lowest current troop count; tie-break by ID.
-3. Never choose a defeated target. If no valid target exists, Wait.
+- Formation: choose Arrow when the enemy's total remaining troops are at least the player's total; otherwise choose Square.
+- Orders: for each living enemy unit, if it has not used Scheme, Intelligence is at least 65, and a living player target exists, Scheme the living player unit with the highest Martial; tie-break by ID.
+- Otherwise Attack the living player unit with the lowest current troop count; tie-break by ID.
+- Never choose a defeated target. If no valid target exists, Wait.
 
-AI order selection must not mutate the battle state or consume PRNG state.
+Both AI helpers must not mutate the battle state or consume PRNG state.
 
 ## 6. Structured battle log
 
