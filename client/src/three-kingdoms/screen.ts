@@ -1,5 +1,18 @@
 import storyEvents from './story-events.json';
 import { el } from '../ui';
+import {
+  chooseEnemyFormation,
+  chooseEnemyOrders,
+  createBattle,
+  resolveRound,
+  type BattleConfig,
+  type BattleLogEntry,
+  type BattleOutcome,
+  type BattleState,
+  type BattleUnit,
+  type Formation,
+  type UnitOrder,
+} from './battle-engine';
 
 type Choice = {
   id: string;
@@ -29,45 +42,226 @@ type CampaignSave = {
   eventFlags: string[];
   resources: { morale: number; supplies: number; bond: number; allies: number };
   selectedChoiceId: string | null;
-  stage: 'oath' | 'battle-entry';
+  stage: 'oath' | 'battle-entry' | 'battle';
+  battleState: BattleState | null;
+  playerFormation: Formation;
+  playerOrders: UnitOrder[];
 };
 
 const SAVE_KEY = 'ageofai:three-kingdoms:campaign:v1';
+const BATTLE_SEED = 0x01842026;
 const events = storyEvents as Record<string, StoryEvent>;
 
+const DEFAULT_SAVE: CampaignSave = {
+  version: 1,
+  eventFlags: [],
+  resources: { morale: 3, supplies: 3, bond: 0, allies: 0 },
+  selectedChoiceId: null,
+  stage: 'oath',
+  battleState: null,
+  playerFormation: 'arrow',
+  playerOrders: [],
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isBattleState(value: unknown): value is BattleState {
+  if (!isRecord(value)) return false;
+  return value.version === 1
+    && Number.isInteger(value.round)
+    && (value.round as number) >= 1
+    && (value.round as number) <= 20
+    && (value.phase === 'ready' || value.phase === 'finished')
+    && Number.isInteger(value.rngState)
+    && isRecord(value.formations)
+    && (value.formations.player === 'arrow' || value.formations.player === 'square')
+    && (value.formations.enemy === 'arrow' || value.formations.enemy === 'square')
+    && Array.isArray(value.units)
+    && value.units.length === 6
+    && Array.isArray(value.log);
+}
+
+function livingUnits(state: BattleState, side: 'player' | 'enemy'): BattleUnit[] {
+  return state.units.filter((unit) => unit.side === side && unit.troops > 0);
+}
+
+function defaultPlayerOrders(state: BattleState): UnitOrder[] {
+  const enemies = livingUnits(state, 'enemy').sort((a, b) =>
+    a.troops - b.troops || a.id.localeCompare(b.id),
+  );
+  const target = enemies[0];
+  return livingUnits(state, 'player').map((unit) => target
+    ? { unitId: unit.id, type: 'attack', targetId: target.id }
+    : { unitId: unit.id, type: 'wait' });
+}
+
+function restorePlayerOrders(state: BattleState, raw: unknown): UnitOrder[] {
+  const defaults = defaultPlayerOrders(state);
+  if (!Array.isArray(raw)) return defaults;
+  const saved = new Map<string, unknown>();
+  for (const candidate of raw) {
+    if (isRecord(candidate) && typeof candidate.unitId === 'string') {
+      saved.set(candidate.unitId, candidate);
+    }
+  }
+  const enemyIds = new Set(livingUnits(state, 'enemy').map((unit) => unit.id));
+  return defaults.map((fallback) => {
+    const candidate = saved.get(fallback.unitId);
+    if (!isRecord(candidate)) return fallback;
+    if (candidate.type === 'wait') return { unitId: fallback.unitId, type: 'wait' };
+    if ((candidate.type !== 'attack' && candidate.type !== 'scheme')
+      || typeof candidate.targetId !== 'string'
+      || !enemyIds.has(candidate.targetId)) return fallback;
+    const actor = state.units.find((unit) => unit.id === fallback.unitId);
+    if (!actor || (candidate.type === 'scheme' && actor.schemeUsed)) return fallback;
+    return {
+      unitId: fallback.unitId,
+      type: candidate.type,
+      targetId: candidate.targetId,
+    } as UnitOrder;
+  });
+}
+
 function loadSave(): CampaignSave {
-  const defaults: CampaignSave = {
-    version: 1,
-    eventFlags: [],
-    resources: { morale: 3, supplies: 3, bond: 0, allies: 0 },
-    selectedChoiceId: null,
-    stage: 'oath',
-  };
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return defaults;
+    if (!raw) return { ...DEFAULT_SAVE, resources: { ...DEFAULT_SAVE.resources }, eventFlags: [] };
     const parsed = JSON.parse(raw) as Partial<CampaignSave>;
-    if (parsed.version !== 1 || !Array.isArray(parsed.eventFlags) || !parsed.resources) return defaults;
+    if (parsed.version !== 1 || !Array.isArray(parsed.eventFlags) || !parsed.resources) {
+      return { ...DEFAULT_SAVE, resources: { ...DEFAULT_SAVE.resources }, eventFlags: [] };
+    }
+
+    const resources = {
+      morale: Number(parsed.resources.morale) || 0,
+      supplies: Number(parsed.resources.supplies) || 0,
+      bond: Number(parsed.resources.bond) || 0,
+      allies: Number(parsed.resources.allies) || 0,
+    };
+    const battleState = isBattleState(parsed.battleState) ? parsed.battleState : null;
+    const stage = parsed.stage === 'battle'
+      ? (battleState ? 'battle' : 'battle-entry')
+      : parsed.stage === 'battle-entry' ? 'battle-entry' : 'oath';
+    const playerFormation: Formation = parsed.playerFormation === 'square' ? 'square' : 'arrow';
     return {
-      ...defaults,
-      ...parsed,
-      resources: {
-        morale: Number(parsed.resources.morale) || 0,
-        supplies: Number(parsed.resources.supplies) || 0,
-        bond: Number(parsed.resources.bond) || 0,
-        allies: Number(parsed.resources.allies) || 0,
-      },
+      ...DEFAULT_SAVE,
+      eventFlags: parsed.eventFlags.filter((flag): flag is string => typeof flag === 'string'),
+      resources,
       selectedChoiceId: typeof parsed.selectedChoiceId === 'string' ? parsed.selectedChoiceId : null,
-      stage: parsed.stage === 'battle-entry' ? 'battle-entry' : 'oath',
+      stage,
+      battleState,
+      playerFormation,
+      playerOrders: battleState ? restorePlayerOrders(battleState, parsed.playerOrders) : [],
     };
   } catch {
-    return defaults;
+    return { ...DEFAULT_SAVE, resources: { ...DEFAULT_SAVE.resources }, eventFlags: [] };
   }
+}
+
+function unitClassName(unit: BattleUnit): string {
+  switch (unit.unitClass) {
+    case 'infantry': return 'Infantry';
+    case 'archer': return 'Archers';
+    case 'cavalry': return 'Light cavalry';
+  }
+}
+
+function unitById(state: BattleState, id: string): BattleUnit | undefined {
+  return state.units.find((unit) => unit.id === id);
+}
+
+function describeBattleLog(state: BattleState, entry: BattleLogEntry): string {
+  const name = (id: string): string => unitById(state, id)?.name ?? id;
+  switch (entry.type) {
+    case 'battle_started':
+      return `Battle begins: ${entry.playerUnitIds.length} vanguard units face ${entry.enemyUnitIds.length} Yellow Turban raiders.`;
+    case 'formation_selected':
+      return `${entry.side === 'player' ? 'Your army' : 'The raiders'} adopt ${entry.formation === 'arrow' ? 'Arrow' : 'Square'} formation.`;
+    case 'unit_attacked':
+      return `${name(entry.attackerId)} attacks ${name(entry.targetId)} — ${entry.hit ? 'hit' : 'miss'} (chance ${entry.hitChance}%, roll ${entry.roll}).`;
+    case 'troops_lost':
+      return `${name(entry.targetId)} loses ${entry.casualties} troops; ${entry.remainingTroops} remain.`;
+    case 'scheme_attempted':
+      return `${name(entry.casterId)} uses a scheme against ${name(entry.targetId)} — ${entry.success ? 'the target is suppressed' : 'the scheme fails'} (chance ${entry.successChance}%, roll ${entry.roll}).`;
+    case 'unit_guarded':
+      return `${name(entry.unitId)} takes a guarded stance.`;
+    case 'unit_defeated':
+      return `${name(entry.unitId)} is defeated.`;
+    case 'order_skipped':
+      return `${name(entry.unitId)} cannot act: ${entry.reason === 'unit_defeated' ? 'the unit has been defeated' : 'the target has fallen'}.`;
+    case 'battle_finished':
+      return `Battle ends — ${entry.outcome}. Remaining troops: your army ${entry.playerTroops}, raiders ${entry.enemyTroops}.`;
+  }
+}
+
+function createFirstBattleConfig(): BattleConfig {
+  return {
+    playerUnits: [
+      {
+        id: 'player-liu-bei',
+        generalId: 'liu-bei',
+        name: 'Liu Bei',
+        unitClass: 'infantry',
+        stats: { martial: 70, intelligence: 76, leadership: 92 },
+        troops: 220,
+        maxTroops: 220,
+      },
+      {
+        id: 'player-guan-yu',
+        generalId: 'guan-yu',
+        name: 'Guan Yu',
+        unitClass: 'cavalry',
+        stats: { martial: 96, intelligence: 78, leadership: 90 },
+        troops: 210,
+        maxTroops: 210,
+      },
+      {
+        id: 'player-zhang-fei',
+        generalId: 'zhang-fei',
+        name: 'Zhang Fei',
+        unitClass: 'infantry',
+        stats: { martial: 98, intelligence: 48, leadership: 84 },
+        troops: 230,
+        maxTroops: 230,
+      },
+    ],
+    enemyUnits: [
+      {
+        id: 'enemy-raider-captain',
+        generalId: 'raider-captain',
+        name: 'Raider Captain',
+        unitClass: 'infantry',
+        stats: { martial: 64, intelligence: 42, leadership: 62 },
+        troops: 205,
+        maxTroops: 205,
+      },
+      {
+        id: 'enemy-rebel-archer',
+        generalId: 'rebel-archer',
+        name: 'Rebel Archer',
+        unitClass: 'archer',
+        stats: { martial: 60, intelligence: 54, leadership: 55 },
+        troops: 175,
+        maxTroops: 175,
+      },
+      {
+        id: 'enemy-rebel-spearman',
+        generalId: 'rebel-spearman',
+        name: 'Rebel Spearman',
+        unitClass: 'infantry',
+        stats: { martial: 58, intelligence: 35, leadership: 51 },
+        troops: 190,
+        maxTroops: 190,
+      },
+    ],
+  };
 }
 
 export class ThreeKingdomsScreen {
   readonly el: HTMLElement;
   private save: CampaignSave;
+  private battleError = '';
 
   constructor(private deps: { onBack: () => void }) {
     this.el = el('section', 'screen tk-screen');
@@ -100,14 +294,100 @@ export class ThreeKingdomsScreen {
 
   private resetCampaign(): void {
     this.save = {
-      version: 1,
+      ...DEFAULT_SAVE,
       eventFlags: [],
-      resources: { morale: 3, supplies: 3, bond: 0, allies: 0 },
-      selectedChoiceId: null,
-      stage: 'oath',
+      resources: { ...DEFAULT_SAVE.resources },
     };
+    this.battleError = '';
     this.persist();
     this.render();
+  }
+
+  private beginBattle(): void {
+    if (!this.save.selectedChoiceId) return;
+    const battleState = createBattle(createFirstBattleConfig(), BATTLE_SEED);
+    this.save.battleState = battleState;
+    this.save.playerFormation = 'arrow';
+    this.save.playerOrders = defaultPlayerOrders(battleState);
+    this.save.stage = 'battle';
+    this.battleError = '';
+    this.persist();
+    this.render();
+  }
+
+  private resetBattle(): void {
+    this.save.battleState = null;
+    this.save.playerFormation = 'arrow';
+    this.save.playerOrders = [];
+    this.save.stage = 'battle-entry';
+    this.battleError = '';
+    this.persist();
+    this.render();
+  }
+
+  private returnToOath(): void {
+    this.save.stage = 'oath';
+    this.persist();
+    this.render();
+  }
+
+  private setFormation(formation: Formation): void {
+    this.save.playerFormation = formation;
+    this.persist();
+    this.render();
+  }
+
+  private setPlayerOrder(order: UnitOrder): void {
+    this.save.playerOrders = [
+      ...this.save.playerOrders.filter((candidate) => candidate.unitId !== order.unitId),
+      order,
+    ];
+    this.persist();
+    this.render();
+  }
+
+  private changeOrderType(unit: BattleUnit, type: string, targetId: string): void {
+    if (type === 'wait') {
+      this.setPlayerOrder({ unitId: unit.id, type: 'wait' });
+      return;
+    }
+    if (type !== 'attack' && type !== 'scheme') return;
+    if (type === 'scheme' && unit.schemeUsed) return;
+    const state = this.save.battleState;
+    if (!state) return;
+    const validTarget = livingUnits(state, 'enemy').some((enemy) => enemy.id === targetId)
+      ? targetId
+      : livingUnits(state, 'enemy').sort((a, b) => a.troops - b.troops || a.id.localeCompare(b.id))[0]?.id;
+    if (!validTarget) {
+      this.setPlayerOrder({ unitId: unit.id, type: 'wait' });
+      return;
+    }
+    this.setPlayerOrder({ unitId: unit.id, type, targetId: validTarget });
+  }
+
+  private resolveBattleRound(): void {
+    const state = this.save.battleState;
+    if (!state || state.phase !== 'ready') return;
+    try {
+      const playerOrders = restorePlayerOrders(state, this.save.playerOrders);
+      const enemyOrders = chooseEnemyOrders(state);
+      const enemyFormation = chooseEnemyFormation(state);
+      const next = resolveRound(state, {
+        formations: {
+          player: this.save.playerFormation,
+          enemy: enemyFormation,
+        },
+        orders: [...playerOrders, ...enemyOrders],
+      });
+      this.save.battleState = next;
+      this.save.playerOrders = next.phase === 'ready' ? defaultPlayerOrders(next) : [];
+      this.battleError = '';
+      this.persist();
+      this.render();
+    } catch (error) {
+      this.battleError = error instanceof Error ? error.message : 'The round could not be resolved.';
+      this.render();
+    }
   }
 
   private render(): void {
@@ -137,7 +417,9 @@ export class ThreeKingdomsScreen {
     }
     shell.appendChild(stats);
 
-    if (this.save.stage === 'battle-entry' && this.save.selectedChoiceId) {
+    if (this.save.stage === 'battle' && this.save.battleState) {
+      this.renderBattle(shell, this.save.battleState);
+    } else if (this.save.stage === 'battle-entry' && this.save.selectedChoiceId) {
       this.renderBattleEntry(shell);
     } else {
       this.renderOath(shell);
@@ -205,19 +487,192 @@ export class ThreeKingdomsScreen {
     rosters.appendChild(enemies);
     panel.appendChild(rosters);
 
-    panel.appendChild(el('p', 'tk-m2-note', 'The battle entry is wired in M1. The playable 3v3 tactical combat loop arrives in M2.'));
+    panel.appendChild(el('p', 'tk-m2-note', 'M2-B now runs a deterministic 3v3 turn-based battle. Choose a formation and issue one order to each living unit.'));
     const actions = el('div', 'tk-actions');
+    const startBtn = el('button', 'btn primary tk-begin-battle', 'Begin tactical battle');
+    startBtn.addEventListener('click', () => this.beginBattle());
     const resetBtn = el('button', 'btn tk-secondary', 'Restart opening');
     resetBtn.addEventListener('click', () => this.resetCampaign());
-    const backBtn = el('button', 'btn primary tk-continue', 'Back to campaign event');
-    backBtn.addEventListener('click', () => {
-      this.save.stage = 'oath';
-      this.persist();
-      this.render();
-    });
+    const backBtn = el('button', 'btn tk-continue', 'Back to campaign event');
+    backBtn.addEventListener('click', () => this.returnToOath());
+    actions.appendChild(startBtn);
     actions.appendChild(resetBtn);
     actions.appendChild(backBtn);
     panel.appendChild(actions);
     shell.appendChild(panel);
+  }
+
+  private renderBattle(shell: HTMLElement, state: BattleState): void {
+    const event = events.yellow_turban_first_battle;
+    const panel = el('article', 'tk-panel tk-battle-panel');
+    panel.appendChild(el('div', 'tk-eyebrow', `YEAR 184 · ROUND ${state.round}`));
+    panel.appendChild(el('h2', 'tk-event-title', event.title));
+    panel.appendChild(el('p', 'tk-narrative', event.battleEntry?.objective ?? ''));
+
+    const formationRow = el('div', 'tk-formation-row');
+    const formationLabel = el('label', 'tk-command-label', 'Your formation');
+    const formationSelect = el('select', 'tk-formation-select');
+    formationSelect.dataset.testid = 'tk-formation';
+    for (const [value, label] of [['arrow', 'Arrow — stronger attacks'], ['square', 'Square — stronger defence']] as const) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      option.selected = this.save.playerFormation === value;
+      formationSelect.appendChild(option);
+    }
+    formationSelect.addEventListener('change', () => {
+      if (formationSelect.value === 'arrow' || formationSelect.value === 'square') {
+        this.setFormation(formationSelect.value);
+      }
+    });
+    formationLabel.appendChild(formationSelect);
+    formationRow.appendChild(formationLabel);
+    formationRow.appendChild(el('span', 'tk-enemy-formation', `Enemy formation: ${state.formations.enemy === 'arrow' ? 'Arrow' : 'Square'}`));
+    panel.appendChild(formationRow);
+
+    const battlefield = el('div', 'tk-battlefield');
+    const playerColumn = el('section', 'tk-battle-side');
+    playerColumn.appendChild(el('h3', '', 'Your vanguard'));
+    const enemyColumn = el('section', 'tk-battle-side enemy');
+    enemyColumn.appendChild(el('h3', '', 'Yellow Turban raiders'));
+
+    const livingEnemies = livingUnits(state, 'enemy');
+    const targetOptions = livingEnemies.slice().sort((a, b) => a.troops - b.troops || a.id.localeCompare(b.id));
+    const normalizedOrders = restorePlayerOrders(state, this.save.playerOrders);
+    for (const unit of state.units.filter((candidate) => candidate.side === 'player')) {
+      playerColumn.appendChild(this.renderPlayerUnit(unit, state, normalizedOrders, targetOptions));
+    }
+    for (const unit of state.units.filter((candidate) => candidate.side === 'enemy')) {
+      enemyColumn.appendChild(this.renderEnemyUnit(unit));
+    }
+    battlefield.appendChild(playerColumn);
+    battlefield.appendChild(enemyColumn);
+    panel.appendChild(battlefield);
+
+    if (this.battleError) panel.appendChild(el('p', 'tk-battle-error', this.battleError));
+
+    if (state.phase === 'finished' && state.outcome) {
+      const title = state.outcome === 'victory' ? 'Victory — the road is held'
+        : state.outcome === 'defeat' ? 'Defeat — the raiders break your line'
+          : 'Draw — neither army can claim the field';
+      const result = el('div', 'tk-battle-result');
+      result.appendChild(el('span', 'tk-eyebrow', 'BATTLE RESULT'));
+      result.appendChild(el('h3', '', title));
+      result.appendChild(el('p', '', `Your remaining troops: ${state.units.filter((unit) => unit.side === 'player').reduce((sum, unit) => sum + unit.troops, 0)} · Enemy remaining troops: ${state.units.filter((unit) => unit.side === 'enemy').reduce((sum, unit) => sum + unit.troops, 0)}`));
+      panel.appendChild(result);
+    } else {
+      const resolveBtn = el('button', 'btn primary tk-resolve-round', 'Resolve round');
+      resolveBtn.dataset.testid = 'tk-resolve-round';
+      resolveBtn.addEventListener('click', () => this.resolveBattleRound());
+      panel.appendChild(resolveBtn);
+    }
+
+    const logPanel = el('section', 'tk-battle-log-panel');
+    logPanel.appendChild(el('h3', '', 'Battle log'));
+    const log = el('ol', 'tk-battle-log');
+    for (const entry of state.log.slice(-30)) {
+      log.appendChild(el('li', '', describeBattleLog(state, entry)));
+    }
+    logPanel.appendChild(log);
+    panel.appendChild(logPanel);
+
+    const actions = el('div', 'tk-actions');
+    const restartBattle = el('button', 'btn tk-secondary', 'Restart battle');
+    restartBattle.addEventListener('click', () => this.resetBattle());
+    const restartCampaign = el('button', 'btn tk-secondary', 'Restart opening');
+    restartCampaign.addEventListener('click', () => this.resetCampaign());
+    const back = el('button', 'btn tk-continue', 'Back to campaign event');
+    back.addEventListener('click', () => this.returnToOath());
+    actions.appendChild(restartBattle);
+    actions.appendChild(restartCampaign);
+    actions.appendChild(back);
+    panel.appendChild(actions);
+    shell.appendChild(panel);
+  }
+
+  private renderPlayerUnit(
+    unit: BattleUnit,
+    state: BattleState,
+    orders: UnitOrder[],
+    targets: BattleUnit[],
+  ): HTMLElement {
+    const card = el('article', 'tk-battle-unit player');
+    card.dataset.unitId = unit.id;
+    const heading = el('div', 'tk-battle-unit-heading');
+    heading.appendChild(el('strong', '', unit.name));
+    heading.appendChild(el('span', 'tk-unit-class', unitClassName(unit)));
+    card.appendChild(heading);
+    card.appendChild(el('div', 'tk-unit-troops', `${unit.troops} / ${unit.maxTroops} troops`));
+    const statuses = [unit.guarded ? 'Guarded' : '', unit.suppressed ? 'Suppressed' : '', unit.schemeUsed ? 'Scheme used' : '']
+      .filter(Boolean);
+    card.appendChild(el('div', 'tk-unit-status', statuses.length ? statuses.join(' · ') : 'Ready'));
+    if (unit.troops <= 0) {
+      card.classList.add('defeated');
+      card.appendChild(el('span', 'tk-defeated-label', 'DEFEATED'));
+      return card;
+    }
+
+    const currentOrder = orders.find((order) => order.unitId === unit.id) ?? { unitId: unit.id, type: 'wait' as const };
+    const commandRow = el('div', 'tk-unit-command');
+    const typeLabel = el('label', 'tk-command-label', 'Order');
+    const typeSelect = el('select', 'tk-order-type');
+    typeSelect.dataset.unitId = unit.id;
+    const typeOptions = [
+      { value: 'attack', label: 'Attack' },
+      { value: 'scheme', label: 'Scheme' },
+      { value: 'wait', label: 'Wait' },
+    ];
+    for (const item of typeOptions) {
+      const option = document.createElement('option');
+      option.value = item.value;
+      option.textContent = item.label;
+      option.disabled = item.value === 'scheme' && unit.schemeUsed;
+      option.selected = currentOrder.type === item.value;
+      typeSelect.appendChild(option);
+    }
+    typeLabel.appendChild(typeSelect);
+    commandRow.appendChild(typeLabel);
+
+    const targetLabel = el('label', 'tk-command-label', 'Target');
+    const targetSelect = el('select', 'tk-order-target');
+    targetSelect.dataset.unitId = unit.id;
+    for (const target of targets) {
+      const option = document.createElement('option');
+      option.value = target.id;
+      option.textContent = `${target.name} — ${target.troops}`;
+      option.selected = 'targetId' in currentOrder && currentOrder.targetId === target.id;
+      targetSelect.appendChild(option);
+    }
+    targetSelect.disabled = currentOrder.type === 'wait' || targets.length === 0;
+    targetLabel.appendChild(targetSelect);
+    commandRow.appendChild(targetLabel);
+
+    typeSelect.addEventListener('change', () => {
+      this.changeOrderType(unit, typeSelect.value, targetSelect.value);
+    });
+    targetSelect.addEventListener('change', () => {
+      if (typeSelect.value === 'attack' || typeSelect.value === 'scheme') {
+        this.setPlayerOrder({ unitId: unit.id, type: typeSelect.value, targetId: targetSelect.value });
+      }
+    });
+    card.appendChild(commandRow);
+    return card;
+  }
+
+  private renderEnemyUnit(unit: BattleUnit): HTMLElement {
+    const card = el('article', 'tk-battle-unit enemy');
+    const heading = el('div', 'tk-battle-unit-heading');
+    heading.appendChild(el('strong', '', unit.name));
+    heading.appendChild(el('span', 'tk-unit-class', unitClassName(unit)));
+    card.appendChild(heading);
+    card.appendChild(el('div', 'tk-unit-troops', `${unit.troops} / ${unit.maxTroops} troops`));
+    const statuses = [unit.guarded ? 'Guarded' : '', unit.suppressed ? 'Suppressed' : '', unit.schemeUsed ? 'Scheme used' : '']
+      .filter(Boolean);
+    card.appendChild(el('div', 'tk-unit-status', statuses.length ? statuses.join(' · ') : 'Ready'));
+    if (unit.troops <= 0) {
+      card.classList.add('defeated');
+      card.appendChild(el('span', 'tk-defeated-label', 'DEFEATED'));
+    }
+    return card;
   }
 }
