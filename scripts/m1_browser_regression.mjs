@@ -58,6 +58,29 @@ function parseFrame(payload) {
   }
 }
 
+async function installWebSocketProbe(page) {
+  await page.addInitScript(() => {
+    window.__m1WsFrames = [];
+    const NativeWebSocket = window.WebSocket;
+    class ProbedWebSocket extends NativeWebSocket {
+      constructor(url, protocols) {
+        if (protocols === undefined) super(url);
+        else super(url, protocols);
+        this.addEventListener('message', (event) => {
+          if (typeof event.data === 'string') window.__m1WsFrames.push(event.data);
+        });
+      }
+    }
+    Object.setPrototypeOf(ProbedWebSocket, NativeWebSocket);
+    window.WebSocket = ProbedWebSocket;
+  });
+}
+
+async function readBrowserMessages(page) {
+  const frames = await page.evaluate(() => window.__m1WsFrames ?? []);
+  return frames.map(parseFrame).filter(Boolean);
+}
+
 function collectSocketMessages(page, target, label = 'browser') {
   page.on('websocket', (socket) => {
     console.log(`[${label}] WebSocket opened: ${socket.url()}`);
