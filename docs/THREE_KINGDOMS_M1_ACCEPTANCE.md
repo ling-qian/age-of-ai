@@ -53,6 +53,30 @@ Result: **PENDING**
 Environment / room / browser details / evidence:
 - PENDING
 
+## Automated browser regression
+
+The CI workflow `.github/workflows/three-kingdoms-m1-validation.yml` runs
+`scripts/m1_browser_regression.mjs` in headless Chromium against the branch's
+local Node/WebSocket server and Vite client. It uses two isolated browser
+contexts for the original RTS multiplayer flow and separate fresh contexts for
+each of the three Three Kingdoms opening choices.
+
+The browser suite verifies:
+- Each opening choice applies its exact resource effects once.
+- Refresh restores the selected choice and its resource state.
+- The first-battle briefing displays both three-unit rosters.
+- Restart resets only the Three Kingdoms campaign save and preserves RTS name/settings.
+- Two RTS browsers create/join a room, ready/start a match, each train a villager
+  through the real HUD, and both observe the resulting authoritative snapshots.
+- RTS chat reaches the second browser after the match starts.
+- No uncaught browser page errors occur.
+
+CI evidence is useful automated browser evidence, but it does not claim that the
+current production deployment or two physical devices were tested. Record any
+additional deployed-environment/manual results separately.
+
+Current result: **PENDING — awaiting the browser CI run**.
+
 ## Gate 3 — Three Kingdoms mode regression
 
 - [ ] Original Age of AI name screen still renders.
