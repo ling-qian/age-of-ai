@@ -155,6 +155,38 @@ function latestSnapshot(messages) {
   }
   return null;
 }
+function chooseTownCenterClickPoints(snapshot, owner) {
+  const townCenter = (snapshot?.buildings ?? []).find(
+    (building) => building.owner === owner && building.type === 'town_center',
+  );
+  assert.ok(townCenter, `missing Town Center for player ${owner} in authoritative snapshot`);
+
+  const ownUnits = (snapshot?.units ?? []).filter((unit) => unit.owner === owner);
+  const offsets = [0.35, 0.65, 0.95, 1.25, 1.55, 1.85, 2.15, 2.45, 2.65];
+  const points = [];
+
+  for (const offsetX of offsets) {
+    for (const offsetY of offsets) {
+      const worldX = townCenter.tileX + offsetX;
+      const worldY = townCenter.tileY + offsetY;
+      let clearance = Number.POSITIVE_INFINITY;
+
+      for (const unit of ownUnits) {
+        const unitHeight = 1.4;
+        const t = Math.max(0, Math.min(unitHeight, ((unit.x - worldX) + (unit.y - worldY)) / 2));
+        const dx = unit.x - (worldX + t);
+        const dy = unit.y - (worldY + t);
+        const radius = (unit.type === 'villager' ? 0.28 : unit.type === 'knight' ? 0.44 : 0.35) + 0.2;
+        clearance = Math.min(clearance, Math.hypot(dx, dy) - radius);
+      }
+
+      points.push({ worldX, worldY, clearance });
+    }
+  }
+
+  return points.sort((a, b) => b.clearance - a.clearance);
+}
+
 
 async function waitUntil(predicate, timeoutMs, label) {
   const startedAt = Date.now();
@@ -268,8 +300,31 @@ async function testOriginalRtsMultiplayer(browser) {
       await page.keyboard.press('h');
       const canvasBox = await page.locator('#game-canvas').boundingBox();
       assert.ok(canvasBox, `${label} RTS canvas must have a measurable bounding box`);
-      await page.mouse.click(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
-      await page.locator('.act-panel .act-title').filter({ hasText: 'Train' }).waitFor({ timeout: 10_000 });
+      const currentSnapshot = latestSnapshot(label === 'host' ? messagesA : messagesB);
+      const clickPoints = chooseTownCenterClickPoints(currentSnapshot, playerId);
+      const trainTitle = page.locator('.act-panel .act-title').filter({ hasText: 'Train' });
+      let selectedTownCenter = false;
+
+      // Click several points inside the 3x3 Town Center footprint, prioritizing
+      // points that are outside nearby villagers' visual hit radii. The RTS
+      // picker intentionally gives units priority over buildings.
+      for (const point of clickPoints.slice(0, 20)) {
+        const dx = point.worldX - (currentSnapshot.buildings.find(
+          (building) => building.owner === playerId && building.type === 'town_center',
+        ).tileX + 1.5);
+        const dy = point.worldY - (currentSnapshot.buildings.find(
+          (building) => building.owner === playerId && building.type === 'town_center',
+        ).tileY + 1.5);
+        const screenX = canvasBox.x + canvasBox.width / 2 + (dx - dy) * 32 * 1.1;
+        const screenY = canvasBox.y + canvasBox.height / 2 + (dx + dy) * 16 * 1.1;
+        await page.mouse.click(screenX, screenY);
+        if (await trainTitle.isVisible().catch(() => false)) {
+          selectedTownCenter = true;
+          break;
+        }
+        await page.waitForTimeout(120);
+      }
+      assert.ok(selectedTownCenter, `${label} browser could not select its Town Center from tested footprint points`);
       const trainButton = page.locator('.act-panel .cmd-tile:not(.off)').first();
       await trainButton.waitFor();
       await trainButton.click();
