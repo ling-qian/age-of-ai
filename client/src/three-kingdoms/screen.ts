@@ -3,6 +3,7 @@ import { el } from '../ui';
 import {
   chooseEnemyFormation,
   chooseEnemyOrders,
+  compareIdsByCodePoint,
   createBattle,
   resolveRound,
   type BattleConfig,
@@ -89,7 +90,7 @@ function livingUnits(state: BattleState, side: 'player' | 'enemy'): BattleUnit[]
 
 function defaultPlayerOrders(state: BattleState): UnitOrder[] {
   const enemies = livingUnits(state, 'enemy').sort((a, b) =>
-    a.troops - b.troops || a.id.localeCompare(b.id),
+    a.troops - b.troops || compareIdsByCodePoint(a.id, b.id),
   );
   const target = enemies[0];
   return livingUnits(state, 'player').map((unit) => target
