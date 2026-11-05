@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   BATTLE_RULES,
   calculateHitChance,
+  clampHitChance,
   calculateSchemeChance,
   chooseEnemyFormation,
   chooseEnemyOrders,
@@ -233,6 +234,9 @@ test('hit-chance formula reaches its legal lower and upper values under valid st
   // the 3x3 matrix plus the maximum +/-10 adjustment makes 10..90 reachable.
   assert.equal(BATTLE_RULES.hitChanceMin, 5);
   assert.equal(BATTLE_RULES.hitChanceMax, 95);
+  assert.equal(clampHitChance(-100), 5, 'hit chance must clamp to the 5% lower boundary');
+  assert.equal(clampHitChance(100), 95, 'hit chance must clamp to the 95% upper boundary');
+  assert.throws(() => clampHitChance(Number.NaN), /must be finite/);
 });
 
 test('deterministic attack roll boundary is exclusive: roll 49 hits at 50%, roll 50 misses', () => {
