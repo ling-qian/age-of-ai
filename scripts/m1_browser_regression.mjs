@@ -602,16 +602,24 @@ async function testThreeKingdomsBattle(browser) {
     console.log(`PASS — M2-B battle result UI: ${finishedSave.battleState.outcome} after round ${finishedSave.battleState.round}`);
 
     await page.getByRole('button', { name: 'Restart battle' }).click();
+    await page.locator('.tk-begin-battle').waitFor({ timeout: 5_000 });
+    const resetBriefing = await page.evaluate(() => JSON.parse(
+      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+    ));
+    assert.equal(resetBriefing.stage, 'battle-entry', 'restart battle must return to the battle briefing');
+    assert.equal(resetBriefing.battleState, null, 'restart battle must clear the completed tactical state');
+    assert.equal(resetBriefing.selectedChoiceId, 'swear_oath', 'restart battle must preserve the campaign choice');
+
+    await page.locator('.tk-begin-battle').click();
     await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 1' }).waitFor();
     const restartedBattle = await page.evaluate(() => JSON.parse(
       localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
     ));
-    assert.equal(restartedBattle.stage, 'battle', 'restart battle must keep the player in the battle stage');
-    assert.equal(restartedBattle.battleState.round, 1, 'restart battle must return to round one');
-    assert.equal(restartedBattle.battleState.phase, 'ready', 'restart battle must make a fresh battle ready');
-    assert.equal(restartedBattle.battleState.log.length, 1, 'restart battle must reset the battle log');
-    console.log('PASS — M2-B restart battle resets the tactical encounter without resetting the campaign');
-
+    assert.equal(restartedBattle.stage, 'battle', 'beginning again must restore the tactical battle stage');
+    assert.equal(restartedBattle.battleState.round, 1, 'the new tactical battle must start at round one');
+    assert.equal(restartedBattle.battleState.phase, 'ready', 'the new tactical battle must be ready');
+    assert.equal(restartedBattle.battleState.log.length, 1, 'the new battle must start with a fresh log');
+    console.log('PASS — M2-B restart battle returns to briefing and starts a fresh encounter');
     await page.locator('.tk-back').click();
     await page.locator('.entry-login input').waitFor();
     assert.equal(browserErrors.length, 0, 'M2-B battle UI must not raise browser runtime errors');
