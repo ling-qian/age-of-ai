@@ -511,9 +511,44 @@ async function testThreeKingdomsBattle(browser) {
     assert.equal(persisted.settings, settingsValue, 'battle save must preserve the original RTS preferences');
 
     const logCount = persisted.campaign.battleState.log.length;
+    console.log('M2-B pre-refresh battle save:', JSON.stringify({
+      stage: persisted.campaign.stage,
+      round: persisted.campaign.battleState.round,
+      phase: persisted.campaign.battleState.phase,
+      rngState: persisted.campaign.battleState.rngState,
+      unitCount: persisted.campaign.battleState.units.length,
+      logCount,
+    }));
+
     await page.reload();
+    await page.locator('.tk-launch-btn').waitFor({ timeout: 10_000 });
+    const afterReloadBeforeLaunch = await page.evaluate(() => ({
+      campaign: JSON.parse(localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null'),
+      name: localStorage.getItem('ageofai:name'),
+      settings: localStorage.getItem('ageofai:settings'),
+    }));
+    console.log('M2-B raw storage after reload, before opening mode:', JSON.stringify({
+      stage: afterReloadBeforeLaunch.campaign?.stage,
+      round: afterReloadBeforeLaunch.campaign?.battleState?.round,
+      phase: afterReloadBeforeLaunch.campaign?.battleState?.phase,
+      rngState: afterReloadBeforeLaunch.campaign?.battleState?.rngState,
+      unitCount: afterReloadBeforeLaunch.campaign?.battleState?.units?.length,
+      logCount: afterReloadBeforeLaunch.campaign?.battleState?.log?.length,
+    }));
     await page.locator('.tk-launch-btn').click();
-    await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 2' }).waitFor();
+    try {
+      await page.locator('.tk-battle-panel .tk-battle-unit.player').first().waitFor({ timeout: 10_000 });
+      console.log('M2-B restored screen immediately after launch:', await page.locator('.tk-shell').innerText());
+      await page.locator('.tk-battle-panel .tk-battle-panel').waitFor({ state: 'attached', timeout: 2_000 }).catch(() => undefined);
+      await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 2' }).waitFor({ timeout: 10_000 });
+    } catch (error) {
+      console.error('M2-B page text after reload/launch:', await page.locator('#app').innerText().catch(() => '(app missing)'));
+      console.error('M2-B browser errors after reload/launch:', browserErrors.join(' | ') || '(none)');
+      console.error('M2-B local storage after reload/launch:', JSON.stringify(await page.evaluate(() => JSON.parse(
+        localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+      ))));
+      throw error;
+    }
     assert.equal(await page.locator('.tk-battle-unit.player').count(), 3, 'refresh must restore player units');
     assert.equal(await page.locator('.tk-battle-unit.enemy').count(), 3, 'refresh must restore enemy units');
     assert.equal(await page.locator('.tk-formation-select').inputValue(), 'square', 'refresh must restore the selected formation');
