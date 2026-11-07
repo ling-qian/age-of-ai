@@ -1,8 +1,8 @@
 # Three Kingdoms M2-A — Tactical Battle Engine Specification
 
-**Status: M2-A COMPLETE / CI VERIFIED — M1 ACCEPTED / FROZEN**
+**Status: M1 ACCEPTED / FROZEN — M2-A COMPLETE / CI VERIFIED — M2-B COMPLETE / CI VERIFIED**
 
-M1 passed all automated and real-browser CI gates on candidate `107c62db98baa19267a4e8d131bc5443f35468fc` and is frozen at branch `m1-freeze/107c62d`. M2-A is implemented and verified on runtime candidate `2e2354aba1c9aedf932962e1d6711e65d42e207f`; [CI run 42054617942](https://github.com/ling-qian/age-of-ai/actions/runs/42054617942) completed successfully with 28 deterministic battle tests passing and the M1 browser regression suite passing. Later feature-branch commits only updated documentation; the frozen M1 branch remains unchanged.
+M1 passed all automated and real-browser CI gates on candidate `107c62db98baa19267a4e8d131bc5443f35468fc` and is frozen at branch `m1-freeze/107c62d`. M2-A is implemented and verified on runtime candidate `2e2354aba1c9aedf932962e1d6711e65d42e207f`; [CI run 42054617942](https://github.com/ling-qian/age-of-ai/actions/runs/42054617942) completed successfully with 28 deterministic battle tests. M2-B is integrated and browser-verified on candidate `cfb7614b6dae43defb68afb8631bbba341cb0612`; [CI run 42427498617](https://github.com/ling-qian/age-of-ai/actions/runs/42427498617) completed successfully with the M1 original-RTS regression and the complete M2-B tactical battle flow. The frozen M1 branch remains unchanged.
 
 ## 1. Repository inspection baseline
 
@@ -337,11 +337,33 @@ Verified on runtime candidate `2e2354aba1c9aedf932962e1d6711e65d42e207f`:
 
 Scope clarification: M2-A delivers the pure battle rules engine and its deterministic tests. It does not yet connect the engine to the Three Kingdoms screen or provide the player-facing battle UI; those belong to M2-B.
 
-## 9. Go / no-go
+## 9. M2-B player-facing integration acceptance
 
-**Decision: GO — M2-A engine milestone complete.**
+<badge color="success">COMPLETE — browser CI passed</badge>
 
-The pure deterministic rules engine is implemented at `client/src/three-kingdoms/battle-engine.ts`. The headless rule suite is at `scripts/three_kingdoms_battle_test.ts` and passes 28/28 tests. The full validation workflow also passes typecheck, production build, existing RTS smoke, and the M1 two-browser regression.
+Verified on candidate `cfb7614b6dae43defb68afb8631bbba341cb0612`:
 
-The next distinct milestone is **M2-B: wire the engine into the existing Three Kingdoms screen**. Do not add combat to the existing RTS, add a server route, or introduce a WebSocket message. Preserve the M1 freeze branch and keep all Three Kingdoms combat state in its dedicated local campaign save namespace.
+- [x] The battle panel is part of the existing Three Kingdoms route; the original Age of AI name/lobby/game route remains separate.
+- [x] The fixed 3v3 scenario renders three player units and three enemies.
+- [x] Arrow/Square formation selection persists.
+- [x] Attack, Scheme, and Wait can be submitted for the three living player units; invalid/friendly/defeated targets are not exposed by the UI.
+- [x] Enemy orders/formation are selected deterministically and the round resolves through the pure engine.
+- [x] Structured battle logs, troop counts, unit classes and statuses are visible.
+- [x] Campaign save refresh restores round 2, formation, orders/log, all six units, the original RTS player name, and RTS settings without replaying the round.
+- [x] The fixed-seed battle reaches **Victory in round 5** in the browser test; the result panel shows the outcome and both remaining troop totals.
+- [x] Restart battle returns to the battle briefing, clears only the tactical encounter, and starts a fresh round 1 while preserving the chosen campaign path.
+- [x] The same CI run passes the three M1 opening choices, original RTS two-browser create/join/start/move/chat/exit/return flow, and the 28 M2-A deterministic rule tests.
+- [x] Diff audit from the M1 frozen SHA shows no modifications under `server/` or `shared/`, no existing RTS simulation/network/lobby changes, and no WebSocket protocol changes.
+
+**Evidence:** [GitHub Actions run 42427498617](https://github.com/ling-qian/age-of-ai/actions/runs/42427498617) — candidate `cfb7614`, completed successfully.
+
+Scope: M2-B is the first playable single-player tactical encounter in the Three Kingdoms mode. It does not yet include the multi-node campaign map, city ownership, recruitment, campaign progression, or persistent roster management; those are M3.
+
+## 10. Go / no-go
+
+**Decision: GO — M2-A and M2-B are complete.**
+
+The independent battle rules remain implemented in `client/src/three-kingdoms/battle-engine.ts`, with 28 deterministic headless tests. The player-facing integration lives inside `client/src/three-kingdoms/screen.ts` and uses only the dedicated Three Kingdoms campaign save namespace.
+
+The next milestone is **M3: campaign loop** — five-city node route, city ownership, recruit roster, battle-result-driven unlocks, and casualty/recruitment persistence. Preserve M1 at `m1-freeze/107c62d`; do not add Three Kingdoms combat to the original RTS or introduce server/WebSocket changes.
 
