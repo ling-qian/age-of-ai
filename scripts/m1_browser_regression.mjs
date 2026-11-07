@@ -567,6 +567,51 @@ async function testThreeKingdomsBattle(browser) {
     assert.equal(restored.name, playerName, 'refresh must preserve the RTS name');
     assert.equal(restored.settings, settingsValue, 'refresh must preserve RTS preferences');
 
+    // Continue the same battle through the UI until the engine returns a
+    // terminal outcome. This verifies the M2-B result panel, not just M2-A math.
+    let lastRound = restored.campaign.battleState.round;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const snapshot = await page.evaluate(() => JSON.parse(
+        localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+      ));
+      if (snapshot?.battleState?.phase === 'finished') break;
+      assert.ok(snapshot?.battleState?.phase === 'ready', 'battle must remain ready until it finishes');
+      await page.locator('.tk-resolve-round').click();
+      await waitUntil(async () => {
+        const next = await page.evaluate(() => JSON.parse(
+          localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+        ));
+        return next?.battleState?.phase === 'finished' || next?.battleState?.round > lastRound;
+      }, 5_000, 'the next battle round to be saved');
+      const next = await page.evaluate(() => JSON.parse(
+        localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+      ));
+      lastRound = next.battleState.round;
+    }
+
+    const finishedSave = await page.evaluate(() => JSON.parse(
+      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+    ));
+    assert.equal(finishedSave.stage, 'battle', 'a finished battle remains in the battle campaign stage');
+    assert.equal(finishedSave.battleState.phase, 'finished', 'the battle must reach a terminal state');
+    assert.ok(['victory', 'defeat', 'draw'].includes(finishedSave.battleState.outcome), 'the engine must choose a valid outcome');
+    await page.locator('.tk-battle-result').waitFor({ timeout: 5_000 });
+    const resultText = await page.locator('.tk-battle-result').innerText();
+    assert.match(resultText, /Victory|Defeat|Draw/, 'the UI must render the terminal battle result');
+    assert.match(resultText, /Your remaining troops:.*Enemy remaining troops:/, 'the result must show remaining troop totals');
+    console.log(`PASS — M2-B battle result UI: ${finishedSave.battleState.outcome} after round ${finishedSave.battleState.round}`);
+
+    await page.getByRole('button', { name: 'Restart battle' }).click();
+    await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 1' }).waitFor();
+    const restartedBattle = await page.evaluate(() => JSON.parse(
+      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+    ));
+    assert.equal(restartedBattle.stage, 'battle', 'restart battle must keep the player in the battle stage');
+    assert.equal(restartedBattle.battleState.round, 1, 'restart battle must return to round one');
+    assert.equal(restartedBattle.battleState.phase, 'ready', 'restart battle must make a fresh battle ready');
+    assert.equal(restartedBattle.battleState.log.length, 1, 'restart battle must reset the battle log');
+    console.log('PASS — M2-B restart battle resets the tactical encounter without resetting the campaign');
+
     await page.locator('.tk-back').click();
     await page.locator('.entry-login input').waitFor();
     assert.equal(browserErrors.length, 0, 'M2-B battle UI must not raise browser runtime errors');
