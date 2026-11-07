@@ -452,9 +452,14 @@ async function testThreeKingdomsBattle(browser) {
   };
 
   await page.addInitScript(({ playerName, settingsValue, campaignSave }) => {
+    // Playwright init scripts execute on every navigation, including reload.
+    // Seed only once per tab so a refresh exercises real persisted battle data
+    // instead of overwriting round 2 with the original battle-entry fixture.
+    if (sessionStorage.getItem('__m2b_campaign_seeded') === '1') return;
     localStorage.setItem('ageofai:name', playerName);
     localStorage.setItem('ageofai:settings', settingsValue);
     localStorage.setItem('ageofai:three-kingdoms:campaign:v1', JSON.stringify(campaignSave));
+    sessionStorage.setItem('__m2b_campaign_seeded', '1');
   }, { playerName, settingsValue, campaignSave });
   collectSocketMessages(page, [], 'M2-B battle UI');
 
@@ -539,7 +544,6 @@ async function testThreeKingdomsBattle(browser) {
     try {
       await page.locator('.tk-battle-panel .tk-battle-unit.player').first().waitFor({ timeout: 10_000 });
       console.log('M2-B restored screen immediately after launch:', await page.locator('.tk-shell').innerText());
-      await page.locator('.tk-battle-panel .tk-battle-panel').waitFor({ state: 'attached', timeout: 2_000 }).catch(() => undefined);
       await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 2' }).waitFor({ timeout: 10_000 });
     } catch (error) {
       console.error('M2-B page text after reload/launch:', await page.locator('#app').innerText().catch(() => '(app missing)'));
