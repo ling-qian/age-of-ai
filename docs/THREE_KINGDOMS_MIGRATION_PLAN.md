@@ -1,6 +1,6 @@
 # Three Kingdoms MVP Migration Plan
 
-Status: M1 is **ACCEPTED / FROZEN** at `107c62db98baa19267a4e8d131bc5443f35468fc` (preserved by `m1-freeze/107c62d`). M2-A deterministic battle engine is **COMPLETE / CI VERIFIED** on runtime candidate `2e2354aba1c9aedf932962e1d6711e65d42e207f`. Next: M2-B player-facing battle UI integration.
+Status: M1 is **ACCEPTED / FROZEN** at `107c62db98baa19267a4e8d131bc5443f35468fc` (preserved by `m1-freeze/107c62d`). M2-A deterministic battle engine and M2-B player-facing tactical battle integration are **COMPLETE / CI VERIFIED**. M2-B candidate: `cfb7614b6dae43defb68afb8631bbba341cb0612`; [CI run 42427498617](https://github.com/ling-qian/age-of-ai/actions/runs/42427498617) completed successfully. Next: M3 campaign loop.
 
 ## Safety rules
 
@@ -74,23 +74,33 @@ Implemented on runtime candidate `2e2354aba1c9aedf932962e1d6711e65d42e207f`:
 
 M2-A is the engine/rules milestone only. It is not yet imported into the Three Kingdoms UI.
 
-### M2-B — Player-facing tactical battle integration (**NEXT**)
+### M2-B — Player-facing tactical battle integration (**COMPLETE / CI VERIFIED**)
 
-Wire the already-tested engine into the existing Three Kingdoms mode without changing the original Age of AI RTS:
+Implemented on candidate `cfb7614b6dae43defb68afb8631bbba341cb0612`:
 
-- Create a dedicated battle screen or panel within the existing Three Kingdoms route.
-- Start a battle from the Yellow Turban briefing using a fixed, explicit 3v3 scenario fixture.
-- Present player formation selection (Arrow/Square) and one Attack/Scheme/Wait order for each living player unit.
-- Provide valid living enemy targets for Attack/Scheme; do not allow friendly or defeated targets.
-- Have the engine choose enemy formation and orders deterministically, then resolve the round.
-- Render structured battle log entries as readable English messages in the UI layer; keep translation out of the engine.
-- Show troop counts, unit status (guarded/suppressed), current round, and victory/defeat/draw result.
-- Persist only the Three Kingdoms campaign/battle state in its dedicated key; do not alter the RTS name/settings keys.
-- Add UI-flow browser tests for order submission, round resolution, status visibility, result handling, refresh/reload, and return to Age of AI.
-- Keep M2-B client-only: no `server/`, `shared/`, RTS simulation, lobby, or WebSocket protocol changes.
+- [x] Integrated the already-tested deterministic battle engine into the existing Three Kingdoms route through a dedicated tactical battle panel.
+- [x] Started the first fixed 3v3 scenario from the Yellow Turban briefing.
+- [x] Added Arrow/Square formation selection and one Attack/Scheme/Wait order control per living player unit.
+- [x] Restricts Attack/Scheme targets to living enemy units; defeated units lose their order controls.
+- [x] Uses deterministic enemy formation/order selection and resolves each round through the pure engine.
+- [x] Renders structured battle logs in the UI layer, plus troop totals and Guarded/Suppressed/Scheme-used statuses.
+- [x] Displays victory, defeat, or draw with both sides' remaining troop totals.
+- [x] Persists the battle stage, round, RNG state, formation, player orders, unit state, and log in the existing dedicated Three Kingdoms campaign key.
+- [x] Browser regression configures all three order types, resolves a round, refreshes, and verifies round 2, formation, log, units, original RTS name, and settings are restored.
+- [x] Browser regression continues the battle to a terminal result (victory in round 5 for the fixed seed), verifies the result panel and troop totals, restarts the encounter through the briefing, and verifies a fresh round 1.
+- [x] Existing M1 story/save tests and the original RTS two-browser room/match/move/chat/exit regression pass on the same CI run.
+- [x] Diff audit against M1 freeze confirms no changes to `server/`, `shared/`, existing RTS simulation, lobby, networking, or WebSocket protocol.
 
-### M3 — Campaign loop
+**Evidence:** [GitHub Actions run 42427498617](https://github.com/ling-qian/age-of-ai/actions/runs/42427498617) on candidate `cfb7614`: typecheck, production build, original RTS WebSocket smoke, 28 deterministic M2-A tests, M1/M2-B browser regression all completed successfully.
+
+M2-B is a client-only single-player tactical battle integration. It does not add server routes, multiplayer messages, or changes to the original RTS.
+
+### M3 — Campaign loop (**NEXT**)
 - Five-city node map, city ownership, recruit roster, battle results, and next-event unlocks.
+- Define the first campaign route and city-state transitions before implementing map UI.
+- Battle victory unlocks the next campaign node; defeat/draw follow explicit retry or recovery rules.
+- Add recruitment/casualty/roster persistence to the dedicated campaign save.
+- Keep the existing battle engine independent and keep all campaign state out of RTS identity/settings storage.
 - Dedicated campaign save; no changes to RTS settings or identity keys.
 
 ### M4 — Verification and deployment
