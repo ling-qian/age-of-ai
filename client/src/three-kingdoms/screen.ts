@@ -1,5 +1,6 @@
 import storyEvents from './story-events.json';
 import { el } from '../ui';
+import { getGeneralSkillById } from './general-skills';
 import {
   CAMPAIGN_SAVE_KEY,
   createDefaultCampaignSave,
@@ -11,7 +12,6 @@ import {
   chooseEnemyOrders,
   compareIdsByCodePoint,
   createBattle,
-  getGeneralSkillById,
   isValidSkillTarget,
   resolveRound,
   type BattleConfig,
