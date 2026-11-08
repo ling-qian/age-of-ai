@@ -6,14 +6,15 @@
  */
 import {
   isBattleState,
-  migrateBattleStateV1ToV2,
+  migrateBattleStateV1ToV3,
+  migrateBattleStateV2ToV3,
   type BattleState,
   type Formation,
   type UnitOrder,
 } from './battle-engine';
 
 export const CAMPAIGN_SAVE_KEY = 'ageofai:three-kingdoms:campaign:v1';
-export const CAMPAIGN_SAVE_VERSION = 2;
+export const CAMPAIGN_SAVE_VERSION = 3;
 
 export interface CampaignResources {
   morale: number;
@@ -25,7 +26,7 @@ export interface CampaignResources {
 export type CampaignStage = 'oath' | 'battle-entry' | 'battle';
 
 export interface CampaignSave {
-  version: 2;
+  version: 3;
   eventFlags: string[];
   resources: CampaignResources;
   selectedChoiceId: string | null;
@@ -94,7 +95,7 @@ function isStage(value: unknown): value is CampaignStage {
 }
 
 function isFormation(value: unknown): value is Formation {
-  return value === 'arrow' || value === 'square';
+  return value === 'arrow' || value === 'square' || value === 'wedge' || value === 'turtle';
 }
 
 function readCommonFields(raw: Record<string, unknown>): Omit<CampaignSave, 'version' | 'battleState'> {
@@ -167,7 +168,7 @@ export function loadCampaignSave(rawText: string | null): CampaignSaveLoadResult
     };
   }
 
-  if (raw.version !== 1 && raw.version !== CAMPAIGN_SAVE_VERSION) {
+  if (raw.version !== 1 && raw.version !== 2 && raw.version !== CAMPAIGN_SAVE_VERSION) {
     return {
       save: createDefaultCampaignSave(),
       status: 'unsupported',
@@ -182,9 +183,11 @@ export function loadCampaignSave(rawText: string | null): CampaignSaveLoadResult
     if (raw.battleState !== null) {
       if (raw.battleState === undefined) throw new Error('battleState is missing');
       if (raw.version === 1) {
-        battleState = migrateBattleStateV1ToV2(raw.battleState);
+        battleState = migrateBattleStateV1ToV3(raw.battleState);
+      } else if (raw.version === 2) {
+        battleState = migrateBattleStateV2ToV3(raw.battleState);
       } else {
-        if (!isBattleState(raw.battleState)) throw new Error('version-2 battle state is invalid');
+        if (!isBattleState(raw.battleState)) throw new Error('version-3 battle state is invalid');
         battleState = raw.battleState;
       }
     }
@@ -192,10 +195,10 @@ export function loadCampaignSave(rawText: string | null): CampaignSaveLoadResult
     const save = buildCampaignSave(common, battleState);
     return {
       save,
-      status: raw.version === 1 ? 'migrated' : 'current',
+      status: raw.version < CAMPAIGN_SAVE_VERSION ? 'migrated' : 'current',
       canPersist: true,
-      message: raw.version === 1
-        ? 'Campaign save upgraded to version 2. Your story choice, resources, battle round, and history were preserved.'
+      message: raw.version < CAMPAIGN_SAVE_VERSION
+        ? `Campaign save upgraded to version ${CAMPAIGN_SAVE_VERSION}. Your story choice, resources, battle progress, and history were preserved.`
         : null,
     };
   } catch (error) {
