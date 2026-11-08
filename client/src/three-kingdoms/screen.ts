@@ -1,6 +1,12 @@
 import storyEvents from './story-events.json';
 import { el } from '../ui';
 import {
+  CAMPAIGN_SAVE_KEY,
+  createDefaultCampaignSave,
+  loadCampaignSave,
+  type CampaignSave,
+} from './campaign-save';
+import {
   chooseEnemyFormation,
   chooseEnemyOrders,
   compareIdsByCodePoint,
@@ -38,51 +44,8 @@ type StoryEvent = {
   };
 };
 
-type CampaignSave = {
-  version: 1;
-  eventFlags: string[];
-  resources: { morale: number; supplies: number; bond: number; allies: number };
-  selectedChoiceId: string | null;
-  stage: 'oath' | 'battle-entry' | 'battle';
-  battleState: BattleState | null;
-  playerFormation: Formation;
-  playerOrders: UnitOrder[];
-};
-
-const SAVE_KEY = 'ageofai:three-kingdoms:campaign:v1';
 const BATTLE_SEED = 0x01842026;
 const events = storyEvents as Record<string, StoryEvent>;
-
-const DEFAULT_SAVE: CampaignSave = {
-  version: 1,
-  eventFlags: [],
-  resources: { morale: 3, supplies: 3, bond: 0, allies: 0 },
-  selectedChoiceId: null,
-  stage: 'oath',
-  battleState: null,
-  playerFormation: 'arrow',
-  playerOrders: [],
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isBattleState(value: unknown): value is BattleState {
-  if (!isRecord(value)) return false;
-  return value.version === 1
-    && Number.isInteger(value.round)
-    && (value.round as number) >= 1
-    && (value.round as number) <= 20
-    && (value.phase === 'ready' || value.phase === 'finished')
-    && Number.isInteger(value.rngState)
-    && isRecord(value.formations)
-    && (value.formations.player === 'arrow' || value.formations.player === 'square')
-    && (value.formations.enemy === 'arrow' || value.formations.enemy === 'square')
-    && Array.isArray(value.units)
-    && value.units.length === 6
-    && Array.isArray(value.log);
-}
 
 function livingUnits(state: BattleState, side: 'player' | 'enemy'): BattleUnit[] {
   return state.units.filter((unit) => unit.side === side && unit.troops > 0);
@@ -125,38 +88,11 @@ function restorePlayerOrders(state: BattleState, raw: unknown): UnitOrder[] {
   });
 }
 
-function loadSave(): CampaignSave {
+function readCampaignSaveText(): string | null {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return { ...DEFAULT_SAVE, resources: { ...DEFAULT_SAVE.resources }, eventFlags: [] };
-    const parsed = JSON.parse(raw) as Partial<CampaignSave>;
-    if (parsed.version !== 1 || !Array.isArray(parsed.eventFlags) || !parsed.resources) {
-      return { ...DEFAULT_SAVE, resources: { ...DEFAULT_SAVE.resources }, eventFlags: [] };
-    }
-
-    const resources = {
-      morale: Number(parsed.resources.morale) || 0,
-      supplies: Number(parsed.resources.supplies) || 0,
-      bond: Number(parsed.resources.bond) || 0,
-      allies: Number(parsed.resources.allies) || 0,
-    };
-    const battleState = isBattleState(parsed.battleState) ? parsed.battleState : null;
-    const stage = parsed.stage === 'battle'
-      ? (battleState ? 'battle' : 'battle-entry')
-      : parsed.stage === 'battle-entry' ? 'battle-entry' : 'oath';
-    const playerFormation: Formation = parsed.playerFormation === 'square' ? 'square' : 'arrow';
-    return {
-      ...DEFAULT_SAVE,
-      eventFlags: parsed.eventFlags.filter((flag): flag is string => typeof flag === 'string'),
-      resources,
-      selectedChoiceId: typeof parsed.selectedChoiceId === 'string' ? parsed.selectedChoiceId : null,
-      stage,
-      battleState,
-      playerFormation,
-      playerOrders: battleState ? restorePlayerOrders(battleState, parsed.playerOrders) : [],
-    };
+    return localStorage.getItem(CAMPAIGN_SAVE_KEY);
   } catch {
-    return { ...DEFAULT_SAVE, resources: { ...DEFAULT_SAVE.resources }, eventFlags: [] };
+    return null;
   }
 }
 
@@ -202,6 +138,7 @@ function createFirstBattleConfig(): BattleConfig {
       {
         id: 'player-liu-bei',
         generalId: 'liu-bei',
+        skillId: 'liu-bei-rende',
         name: 'Liu Bei',
         unitClass: 'infantry',
         stats: { martial: 70, intelligence: 76, leadership: 92 },
@@ -211,6 +148,7 @@ function createFirstBattleConfig(): BattleConfig {
       {
         id: 'player-guan-yu',
         generalId: 'guan-yu',
+        skillId: 'guan-yu-qinglong-strike',
         name: 'Guan Yu',
         unitClass: 'cavalry',
         stats: { martial: 96, intelligence: 78, leadership: 90 },
@@ -220,6 +158,7 @@ function createFirstBattleConfig(): BattleConfig {
       {
         id: 'player-zhang-fei',
         generalId: 'zhang-fei',
+        skillId: 'zhang-fei-thunderous-roar',
         name: 'Zhang Fei',
         unitClass: 'infantry',
         stats: { martial: 98, intelligence: 48, leadership: 84 },
@@ -262,17 +201,24 @@ function createFirstBattleConfig(): BattleConfig {
 export class ThreeKingdomsScreen {
   readonly el: HTMLElement;
   private save: CampaignSave;
+  private saveWritable = true;
+  private saveWarning: string | null = null;
   private battleError = '';
 
   constructor(private deps: { onBack: () => void }) {
     this.el = el('section', 'screen tk-screen');
-    this.save = loadSave();
+    const loaded = loadCampaignSave(readCampaignSaveText());
+    this.save = loaded.save;
+    this.saveWritable = loaded.canPersist;
+    this.saveWarning = loaded.message;
+    if (loaded.status === 'migrated') this.persist();
     this.render();
   }
 
   private persist(): void {
+    if (!this.saveWritable) return;
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(this.save));
+      localStorage.setItem(CAMPAIGN_SAVE_KEY, JSON.stringify(this.save));
     } catch {
       // Local save is optional when browser storage is unavailable.
     }
@@ -294,11 +240,9 @@ export class ThreeKingdomsScreen {
   }
 
   private resetCampaign(): void {
-    this.save = {
-      ...DEFAULT_SAVE,
-      eventFlags: [],
-      resources: { ...DEFAULT_SAVE.resources },
-    };
+    this.save = createDefaultCampaignSave();
+    this.saveWritable = true;
+    this.saveWarning = null;
     this.battleError = '';
     this.persist();
     this.render();
@@ -403,6 +347,13 @@ export class ThreeKingdomsScreen {
 
     shell.appendChild(el('h1', 'tk-title', 'THREE KINGDOMS'));
     shell.appendChild(el('p', 'tk-subtitle', 'FATE OF THE HAN · CAMPAIGN I: THE YELLOW TURBAN REBELLION'));
+    if (this.saveWarning) {
+      const warning = el('div', 'tk-error', this.saveWarning);
+      const reset = el('button', 'btn tk-secondary', 'Discard saved data and start a new campaign');
+      reset.addEventListener('click', () => this.resetCampaign());
+      warning.appendChild(reset);
+      shell.appendChild(warning);
+    }
 
     const stats = el('div', 'tk-stats');
     for (const [label, value] of [
