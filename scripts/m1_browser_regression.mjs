@@ -517,7 +517,7 @@ async function testThreeKingdomsBattle(browser) {
     assert.equal(await page.locator('.tk-battle-unit.player').count(), 3);
     assert.equal(await page.locator('.tk-battle-unit.enemy').count(), 3);
     assert.equal(await page.locator('.tk-formation-select option').count(), 4, 'battle screen must expose all four doctrine choices');
-    assert.equal(await page.locator('.tk-unit-position').count(), 3, 'battle cards must show each general position');
+    assert.equal(await page.locator('.tk-battle-unit.player .tk-unit-position').count(), 3, 'player general cards must show each position');
     const liuTargets = await page.locator('.tk-order-target[data-unit-id="player-liu-bei"] option').evaluateAll((options) => options.map((option) => option.value));
     assert.ok(!liuTargets.includes('enemy-rebel-archer'), 'infantry target control must not expose a screened rear archer');
     const archerReach = await page.locator('.tk-enemy-target-preview[data-unit-id="enemy-rebel-archer"] option').evaluateAll((options) => options.map((option) => option.value));
