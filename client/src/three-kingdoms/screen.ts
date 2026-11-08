@@ -158,6 +158,8 @@ function describeBattleLog(state: BattleState, entry: BattleLogEntry): string {
       return `${entry.side === 'player' ? 'Your army' : 'The raiders'} redeploy: ${entry.assignments.map((item) => `${name(item.unitId)} to ${item.slot}`).join(', ')}.`;
     case 'deployment_locked':
       return `Deployment is locked. The armies take their positions for round ${entry.round}.`;
+    case 'deployment_locked':
+      return `Deployment is locked. The armies take their positions for round ${entry.round}.`;
     case 'formation_selected':
       return `${entry.side === 'player' ? 'Your army' : 'The raiders'} adopt ${formationName(entry.formation)} formation.`;
     case 'unit_attacked':
@@ -390,14 +392,30 @@ export class ThreeKingdomsScreen {
       this.setPlayerOrder({ unitId: unit.id, type: 'wait' });
       return;
     }
-    if (type !== 'attack' && type !== 'scheme') return;
-    if (type === 'scheme' && unit.schemeUsed) return;
     const state = this.save.battleState;
     if (!state) return;
+
+    if (type === 'skill') {
+      const definition = unit.skillId ? getGeneralSkillById(unit.skillId) : undefined;
+      const candidates = getValidSkillTargets(state, unit.id);
+      if (!definition || !candidates.length) return;
+      if (definition.target === 'enemy_all') {
+        this.setPlayerOrder({ unitId: unit.id, type: 'skill' });
+        return;
+      }
+      const validTarget = candidates.some((candidate) => candidate.id === targetId)
+        ? targetId
+        : [...candidates].sort((a, b) => a.troops - b.troops || compareIdsByCodePoint(a.id, b.id))[0]?.id;
+      if (validTarget) this.setPlayerOrder({ unitId: unit.id, type: 'skill', targetId: validTarget });
+      return;
+    }
+
+    if (type !== 'attack' && type !== 'scheme') return;
+    if (type === 'scheme' && unit.schemeUsed) return;
     const candidates = type === 'attack' ? getValidAttackTargets(state, unit.id) : livingUnits(state, 'enemy');
     const validTarget = candidates.some((enemy) => enemy.id === targetId)
       ? targetId
-      : candidates.sort((a, b) => a.troops - b.troops || compareIdsByCodePoint(a.id, b.id))[0]?.id;
+      : [...candidates].sort((a, b) => a.troops - b.troops || compareIdsByCodePoint(a.id, b.id))[0]?.id;
     if (!validTarget) {
       this.setPlayerOrder({ unitId: unit.id, type: 'wait' });
       return;
@@ -551,6 +569,131 @@ export class ThreeKingdomsScreen {
     shell.appendChild(panel);
   }
 
+  private renderDeployment(shell: HTMLElement, state: BattleState): void {
+    const panel = el('article', 'tk-panel tk-deployment-panel');
+    panel.appendChild(el('div', 'tk-eyebrow', 'YEAR 184 · PRE-BATTLE DEPLOYMENT'));
+    panel.appendChild(el('h2', 'tk-event-title', 'Place your vanguard'));
+    panel.appendChild(el('p', 'tk-narrative', 'Choose each general’s position before the first clash. Frontline units screen the same lane; archers can strike protected rear targets. Deployment locks when combat begins.'));
+
+    const doctrine = el('div', 'tk-deployment-doctrine');
+    const doctrineLabel = el('label', 'tk-command-label', 'Army doctrine');
+    const doctrineSelect = el('select', 'tk-deployment-doctrine-select');
+    const doctrines: Array<[Formation, string]> = [
+      ['arrow', 'Arrow — stronger attacks'],
+      ['square', 'Square — stronger defence'],
+      ['wedge', 'Wedge — cavalry charge, weaker other attacks'],
+      ['turtle', 'Turtle — strongest defence, weaker attacks'],
+    ];
+    for (const [value, label] of doctrines) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      option.selected = this.save.playerFormation === value;
+      doctrineSelect.appendChild(option);
+    }
+    doctrineSelect.addEventListener('change', () => {
+      const selected = doctrineSelect.value;
+      if (selected === 'arrow' || selected === 'square' || selected === 'wedge' || selected === 'turtle') {
+        this.setFormation(selected);
+      }
+    });
+    doctrineLabel.appendChild(doctrineSelect);
+    doctrine.appendChild(doctrineLabel);
+    panel.appendChild(doctrine);
+
+    const boards = el('div', 'tk-deployment-boards');
+    const playerBoard = el('section', 'tk-deployment-side player');
+    playerBoard.appendChild(el('h3', '', 'Your formation · editable'));
+    const playerGrid = el('div', 'tk-deployment-grid player');
+    for (const slot of DEPLOYMENT_SLOTS) {
+      const cell = el('div', 'tk-deployment-cell');
+      cell.dataset.slot = slot;
+      cell.appendChild(el('span', 'tk-deployment-cell-label', slot.replace('-', ' · ').toUpperCase()));
+      const occupant = state.units.find((unit) => unit.side === 'player' && unit.slot === slot);
+      if (occupant) {
+        cell.appendChild(el('strong', 'tk-deployment-cell-unit', occupant.name));
+        cell.appendChild(el('span', 'tk-deployment-cell-class', unitClassName(occupant)));
+      } else {
+        cell.appendChild(el('span', 'tk-deployment-empty', 'Open position'));
+      }
+      playerGrid.appendChild(cell);
+    }
+    playerBoard.appendChild(playerGrid);
+
+    const controls = el('div', 'tk-deployment-controls');
+    for (const unit of state.units.filter((candidate) => candidate.side === 'player')) {
+      const card = el('article', 'tk-deployment-unit');
+      card.dataset.unitId = unit.id;
+      const heading = el('div', 'tk-battle-unit-heading');
+      heading.appendChild(el('strong', '', unit.name));
+      heading.appendChild(el('span', 'tk-unit-class', unitClassName(unit)));
+      card.appendChild(heading);
+      card.appendChild(el('div', 'tk-unit-troops', `${unit.troops} / ${unit.maxTroops} troops`));
+      const definition = unit.skillId ? getGeneralSkillById(unit.skillId) : undefined;
+      if (definition) {
+        card.appendChild(el('div', 'tk-general-skill-name', definition.name));
+        card.appendChild(el('p', 'tk-general-skill-description', definition.description));
+        card.appendChild(el('span', 'tk-general-skill-limit', `${definition.usesPerBattle} uses · ${definition.cooldownRounds}-round cooldown`));
+      }
+      const label = el('label', 'tk-command-label', 'Battlefield position');
+      const select = el('select', 'tk-deployment-slot-select');
+      select.dataset.unitId = unit.id;
+      for (const slot of DEPLOYMENT_SLOTS) {
+        const occupant = state.units.find((candidate) =>
+          candidate.side === 'player' && candidate.slot === slot && candidate.id !== unit.id,
+        );
+        const option = document.createElement('option');
+        option.value = slot;
+        option.textContent = slot.replace('-', ' · ');
+        option.selected = unit.slot === slot;
+        option.disabled = Boolean(occupant);
+        select.appendChild(option);
+      }
+      select.addEventListener('change', () => {
+        const selected = select.value;
+        if (DEPLOYMENT_SLOTS.includes(selected as DeploymentSlot)) {
+          this.changeDeployment(unit.id, selected as DeploymentSlot);
+        }
+      });
+      label.appendChild(select);
+      card.appendChild(label);
+      controls.appendChild(card);
+    }
+    playerBoard.appendChild(controls);
+    boards.appendChild(playerBoard);
+
+    const enemyBoard = el('section', 'tk-deployment-side enemy');
+    enemyBoard.appendChild(el('h3', '', 'Enemy intelligence · known positions'));
+    const enemyGrid = el('div', 'tk-deployment-grid enemy');
+    for (const slot of DEPLOYMENT_SLOTS) {
+      const cell = el('div', 'tk-deployment-cell');
+      cell.dataset.slot = slot;
+      cell.appendChild(el('span', 'tk-deployment-cell-label', slot.replace('-', ' · ').toUpperCase()));
+      const occupant = state.units.find((unit) => unit.side === 'enemy' && unit.slot === slot);
+      if (occupant) {
+        cell.appendChild(el('strong', 'tk-deployment-cell-unit', occupant.name));
+        cell.appendChild(el('span', 'tk-deployment-cell-class', unitClassName(occupant)));
+      } else {
+        cell.appendChild(el('span', 'tk-deployment-empty', 'Unknown / empty'));
+      }
+      enemyGrid.appendChild(cell);
+    }
+    enemyBoard.appendChild(enemyGrid);
+    boards.appendChild(enemyBoard);
+    panel.appendChild(boards);
+
+    if (this.battleError) panel.appendChild(el('p', 'tk-battle-error', this.battleError));
+    const actions = el('div', 'tk-actions');
+    const start = el('button', 'btn primary tk-start-deployed-battle', 'Lock positions · Begin battle');
+    start.addEventListener('click', () => this.startDeployedBattle());
+    const cancel = el('button', 'btn tk-secondary tk-cancel-deployment', 'Cancel encounter');
+    cancel.addEventListener('click', () => this.cancelDeployment());
+    actions.appendChild(start);
+    actions.appendChild(cancel);
+    panel.appendChild(actions);
+    shell.appendChild(panel);
+  }
+
   private renderBattle(shell: HTMLElement, state: BattleState): void {
     const event = events.yellow_turban_first_battle;
     const panel = el('article', 'tk-panel tk-battle-panel');
@@ -559,10 +702,16 @@ export class ThreeKingdomsScreen {
     panel.appendChild(el('p', 'tk-narrative', event.battleEntry?.objective ?? ''));
 
     const formationRow = el('div', 'tk-formation-row');
-    const formationLabel = el('label', 'tk-command-label', 'Your formation');
+    const formationLabel = el('label', 'tk-command-label', 'Your army doctrine');
     const formationSelect = el('select', 'tk-formation-select');
     formationSelect.dataset.testid = 'tk-formation';
-    for (const [value, label] of [['arrow', 'Arrow — stronger attacks'], ['square', 'Square — stronger defence']] as const) {
+    const doctrines: Array<[Formation, string]> = [
+      ['arrow', 'Arrow — stronger attacks'],
+      ['square', 'Square — stronger defence'],
+      ['wedge', 'Wedge — cavalry charge'],
+      ['turtle', 'Turtle — stronger defence'],
+    ];
+    for (const [value, label] of doctrines) {
       const option = document.createElement('option');
       option.value = value;
       option.textContent = label;
@@ -570,8 +719,9 @@ export class ThreeKingdomsScreen {
       formationSelect.appendChild(option);
     }
     formationSelect.addEventListener('change', () => {
-      if (formationSelect.value === 'arrow' || formationSelect.value === 'square') {
-        this.setFormation(formationSelect.value);
+      const selected = formationSelect.value;
+      if (selected === 'arrow' || selected === 'square' || selected === 'wedge' || selected === 'turtle') {
+        this.setFormation(selected);
       }
     });
     formationLabel.appendChild(formationSelect);
@@ -585,11 +735,9 @@ export class ThreeKingdomsScreen {
     const enemyColumn = el('section', 'tk-battle-side enemy');
     enemyColumn.appendChild(el('h3', '', 'Yellow Turban raiders'));
 
-    const livingEnemies = livingUnits(state, 'enemy');
-    const targetOptions = livingEnemies.slice().sort((a, b) => a.troops - b.troops || a.id.localeCompare(b.id));
     const normalizedOrders = restorePlayerOrders(state, this.save.playerOrders);
     for (const unit of state.units.filter((candidate) => candidate.side === 'player')) {
-      playerColumn.appendChild(this.renderPlayerUnit(unit, state, normalizedOrders, targetOptions));
+      playerColumn.appendChild(this.renderPlayerUnit(unit, state, normalizedOrders));
     }
     for (const unit of state.units.filter((candidate) => candidate.side === 'enemy')) {
       enemyColumn.appendChild(this.renderEnemyUnit(unit));
@@ -638,6 +786,7 @@ export class ThreeKingdomsScreen {
     panel.appendChild(actions);
     shell.appendChild(panel);
   }
+
 
   private renderPlayerUnit(
     unit: BattleUnit,
