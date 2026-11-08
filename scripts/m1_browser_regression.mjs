@@ -607,7 +607,7 @@ async function testThreeKingdomsBattle(browser) {
     );
     assert.equal(restored.name, undefined);
     assert.equal(await page.locator('.tk-deployment-panel').count(), 0, 'a saved active battle must restore directly to combat, not deployment');
-    assert.equal(await page.locator('.tk-unit-position').count(), 3, 'positions must remain visible after reload');
+    assert.equal(await page.locator('.tk-battle-unit.player .tk-unit-position').count(), 3, 'player positions must remain visible after reload');
     console.log('PASS — M2-C battle refresh preserves skill cooldowns, uses, positions, doctrine and log');
 
     let lastRound = restored.battleState.round;
