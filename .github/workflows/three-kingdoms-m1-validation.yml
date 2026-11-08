@@ -5,6 +5,7 @@ on:
     branches:
       - feature/three-kingdoms-mvp
       - feature/m2c-save-skill-model
+      - feature/m2c-skill-execution
   pull_request:
     branches:
       - main
