@@ -76,6 +76,10 @@ function isStringArray(value: unknown): value is string[] {
 function isUnitOrder(value: unknown): value is UnitOrder {
   if (!isRecord(value) || typeof value.unitId !== 'string' || value.unitId.trim().length === 0) return false;
   if (value.type === 'wait') return true;
+  if (value.type === 'skill') {
+    return value.targetId === undefined
+      || (typeof value.targetId === 'string' && value.targetId.trim().length > 0);
+  }
   return (value.type === 'attack' || value.type === 'scheme')
     && typeof value.targetId === 'string'
     && value.targetId.trim().length > 0;
