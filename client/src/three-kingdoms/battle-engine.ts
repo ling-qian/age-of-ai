@@ -2,6 +2,7 @@ import {
   createInitialGeneralSkillState,
   getGeneralSkillById,
   getGeneralSkillForOwner,
+  type GeneralSkillDefinition,
   type GeneralSkillState,
 } from './general-skills';
 
@@ -70,7 +71,7 @@ export type BattleLogEntry =
   | { type: 'troops_restored'; round: number; targetId: string; amount: number; remainingTroops: number }
   | { type: 'unit_guarded'; round: number; unitId: string }
   | { type: 'unit_defeated'; round: number; unitId: string; side: BattleSide }
-  | { type: 'order_skipped'; round: number; unitId: string; reason: 'unit_defeated' | 'target_defeated' }
+  | { type: 'order_skipped'; round: number; unitId: string; reason: 'unit_defeated' | 'target_defeated' | 'target_invalid' }
   | { type: 'battle_finished'; round: number; outcome: BattleOutcome; playerTroops: number; enemyTroops: number };
 
 export interface BattleState {
@@ -628,18 +629,6 @@ function resolveGeneralSkill(state: BattleState, actor: BattleUnit, order: Extra
           casualties,
           remainingTroops: target.troops,
         });
-        if (markDefeatedIfNeeded(state, target)) {
-          state.log.push({
-            type: 'general_skill_used',
-            round: state.round,
-            skillId,
-            casterId: actor.id,
-            targetId: target.id,
-            effectType: definition.effect.type,
-            success,
-          });
-          return true;
-        }
       }
     } else if (definition.effect.type === 'suppress') {
       target.suppressed = true;
@@ -656,6 +645,9 @@ function resolveGeneralSkill(state: BattleState, actor: BattleUnit, order: Extra
       effectType: definition.effect.type,
       success,
     });
+    if (definition.effect.type === 'damage' && target.troops === 0) {
+      if (markDefeatedIfNeeded(state, target)) return true;
+    }
   }
   return false;
 }
@@ -729,6 +721,16 @@ export function resolveRound(state: BattleState, input: RoundInput): BattleState
     }
 
     if (order.type === 'skill') {
+      if (order.targetId) {
+        const selected = unitsById.get(order.targetId);
+        if (!selected || !isValidSkillTarget(actor, selected, getGeneralSkillById(actor.skillId ?? '')!)) {
+          next.log.push({ type: 'order_skipped', round: next.round, unitId: actor.id, reason: 'target_invalid' });
+          continue;
+        }
+      } else if (!skillTargetsFor(next, actor, getGeneralSkillById(actor.skillId ?? '')!).length) {
+        next.log.push({ type: 'order_skipped', round: next.round, unitId: actor.id, reason: 'target_invalid' });
+        continue;
+      }
       const finished = resolveGeneralSkill(next, actor, order);
       if (finished) break;
       continue;
