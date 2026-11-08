@@ -138,6 +138,7 @@ test('version-1 campaign and battle saves migrate without losing battle progress
   assert.deepEqual(migratedBattle.units.map((unit) => unit.troops), oldBattle.units.map((unit: { troops: number }) => unit.troops));
   assert.equal(migratedBattle.units.find((unit) => unit.generalId === 'liu-bei')?.skillState?.usesRemaining, 2);
   assert.deepEqual(migratedBattle.units.filter((unit) => unit.side === 'player').map((unit) => unit.slot), ['front-center', 'front-left', 'front-right']);
+  assert.deepEqual(migratedBattle.units.filter((unit) => unit.side === 'player').map((unit) => unit.slot), ['front-center', 'front-left', 'front-right']);
 });
 
 test('version-2 campaign and battle saves migrate to v3 and assign default deployment slots', () => {
@@ -180,7 +181,36 @@ test('version-1 oath/briefing save migrates without inventing a battle', () => {
   assert.equal(loaded.save.selectedChoiceId, 'swear_oath');
 });
 
-test('version-2 skill cooldown and remaining uses are restored exactly', () => {
+test('version-2 campaign and battle saves migrate to v3 with default slots', () => {
+  const legacyUnits = currentBattle.units.map((unit) => {
+    const legacyUnit = { ...unit } as Record<string, unknown>;
+    delete legacyUnit.slot;
+    return legacyUnit;
+  });
+  const battleV2 = { ...currentBattle, version: 2, units: legacyUnits };
+  const legacySave = {
+    version: 2,
+    eventFlags: ['taoyuan_oath_resolved'],
+    resources: { morale: 4, supplies: 3, bond: 1, allies: 0 },
+    selectedChoiceId: 'swear_oath',
+    stage: 'battle',
+    battleState: battleV2,
+    playerFormation: 'turtle',
+    playerOrders: [{ unitId: 'player-liu-bei', type: 'wait' }],
+  };
+  const loaded = loadCampaignSave(JSON.stringify(legacySave));
+  assert.equal(loaded.status, 'migrated');
+  assert.equal(loaded.save.version, 3);
+  assert.equal(loaded.save.playerFormation, 'turtle');
+  assert.equal(loaded.save.battleState?.version, 3);
+  assert.deepEqual(
+    loaded.save.battleState?.units.filter((unit) => unit.side === 'player').map((unit) => unit.slot),
+    ['front-center', 'front-left', 'front-right'],
+  );
+  assert.equal(loaded.save.battleState?.units.find((unit) => unit.generalId === 'liu-bei')?.skillState?.usesRemaining, 2);
+});
+
+test('version-3 skill cooldown and remaining uses are restored exactly', () => {
   const battleState = {
     ...currentBattle,
     units: currentBattle.units.map((unit) => unit.generalId === 'liu-bei'
