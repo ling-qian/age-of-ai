@@ -467,9 +467,24 @@ async function testThreeKingdomsBattle(browser) {
     await page.goto(BASE_URL);
     await page.locator('.tk-launch-btn').click();
     await page.locator('.tk-event-title').filter({ hasText: 'The Yellow Turban Rebellion' }).waitFor();
+    const migratedCampaign = await page.evaluate(() => JSON.parse(
+      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+    ));
+    assert.equal(migratedCampaign.version, 2, 'opening a v1 campaign must persist the version-2 migration');
+    assert.equal(migratedCampaign.stage, 'battle-entry', 'campaign migration must preserve the briefing stage');
     await page.locator('.tk-begin-battle').click();
 
     await page.locator('.tk-battle-panel').waitFor();
+    const initializedCampaign = await page.evaluate(() => JSON.parse(
+      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+    ));
+    assert.equal(initializedCampaign.version, 2, 'new campaign writes must remain on save schema version 2');
+    assert.equal(initializedCampaign.battleState.version, 2, 'new battles must use battle-state schema version 2');
+    assert.deepEqual(
+      initializedCampaign.battleState.units.filter((unit) => unit.side === 'player').map((unit) => unit.skillId),
+      ['liu-bei-rende', 'guan-yu-qinglong-strike', 'zhang-fei-thunderous-roar'],
+      'each starter general must persist a distinct personal skill ID',
+    );
     assert.equal(await page.locator('.tk-battle-unit.player').count(), 3, 'battle UI must show three player units');
     assert.equal(await page.locator('.tk-battle-unit.enemy').count(), 3, 'battle UI must show three enemy units');
     assert.equal(await page.locator('.tk-order-type').count(), 3, 'each living player unit must receive one order control');
