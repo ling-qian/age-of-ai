@@ -95,7 +95,7 @@ Implemented on candidate `cfb7614b6dae43defb68afb8631bbba341cb0612`:
 
 M2-B is a client-only single-player tactical battle integration. It does not add server routes, multiplayer messages, or changes to the original RTS.
 
-### M2-C — General-specific skills and tactical deployment formations (**IN PROGRESS — SAVE V2 + SKILL DATA MODEL**)
+### M2-C — General-specific skills and tactical deployment formations (**IN PROGRESS — PHASE 2 SKILL EXECUTION**)
 
 The current M2-B build is a playable first battle, not the full tactical system. Its generic Attack/Scheme/Wait orders and army-wide Arrow/Square stance do not satisfy the requirements for unique general skills and detailed deployment.
 
@@ -113,6 +113,8 @@ Required before implementation:
 - Preserve the M1 freeze branch. No changes to `server/`, `shared/`, original RTS simulation, lobby, networking, or WebSocket protocol.
 
 Phase 1 implementation is on `feature/m2c-save-skill-model`. Campaign saves retain the existing localStorage key while moving the JSON schema and battle-state schema to version 2. Valid v1 saves migrate; invalid/unknown saves are read-only until explicit reset. The skill registry currently covers Liu Bei, Guan Yu, and Zhang Fei with versioned data-only definitions. This is not yet a full M2-C acceptance: skill execution, cooldown resolution, deployment, positional targeting, and browser acceptance remain outstanding.
+
+Phase 2 is being implemented on `feature/m2c-skill-execution`. The battle engine now supports owner-validated personal-skill orders, deterministic healing/damage/suppression effects, per-skill uses and cooldowns, round-boundary cooldown ticks, initiative-time target revalidation, and deterministic enemy skill choice. The first skill-execution suite covers the three starter abilities and save/load persistence. This does not yet complete M2-C: 3×3 deployment, positional screening, differentiated unit formations, skill UI, and the complete browser acceptance flow are still pending.
 
 **Phase 1 verification:** candidate `483597629f68287fa26a6e3cd86feb1da1036cf5` passed [GitHub Actions run 42429683074](https://github.com/ling-qian/age-of-ai/actions/runs/42429683074), including typecheck/build, original RTS smoke, 28 M2-A tests, 7 M2-C save/skill-model tests, and the Playwright browser regression. Diff audit confirms no `server/`, `shared/`, or original RTS/network files changed. This verifies only save migration and skill data registration—not skill use in combat.
 
