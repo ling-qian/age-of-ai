@@ -500,10 +500,17 @@ export function remainingTroops(state: BattleState, side: BattleSide): number {
     .reduce((total, unit) => total + unit.troops, 0);
 }
 
-/** Enemy formation heuristic. Pure: does not mutate state or RNG. */
+/** Composition-aware enemy doctrine. Pure: does not mutate state or RNG. */
 export function chooseEnemyFormation(state: BattleState): Formation {
   assertBattleState(state, true);
-  return remainingTroops(state, 'enemy') >= remainingTroops(state, 'player') ? 'arrow' : 'square';
+  const enemies = livingUnits(state, 'enemy');
+  const cavalry = enemies.filter((unit) => unit.unitClass === 'cavalry').length;
+  const archers = enemies.filter((unit) => unit.unitClass === 'archer').length;
+  const enemyTroops = remainingTroops(state, 'enemy');
+  const playerTroops = remainingTroops(state, 'player');
+  if (cavalry >= 2 && enemyTroops >= playerTroops * 0.8) return 'wedge';
+  if (archers >= 2 && enemyTroops < playerTroops) return 'turtle';
+  return enemyTroops >= playerTroops ? 'arrow' : 'square';
 }
 
 /** Determine whether a skill target satisfies its owner's typed target rule. */
@@ -522,9 +529,7 @@ export function isValidSkillTarget(
     case 'enemy':
       return target.side !== actor.side;
     case 'enemy_frontline':
-      // Transitional pre-deployment rule: infantry and cavalry are frontline
-      // eligible; the deployment phase will replace this class rule with slots.
-      return target.side !== actor.side && target.unitClass !== 'archer';
+      return target.side !== actor.side && getDeploymentDepth(target.slot) === 'front';
     case 'enemy_all':
       return target.side !== actor.side;
   }
@@ -570,14 +575,90 @@ export function chooseEnemyOrders(state: BattleState): UnitOrder[] {
       )[0];
       return { unitId: enemy.id, type: 'scheme', targetId: target.id };
     }
-    if (players.length > 0) {
-      const target = [...players].sort((a, b) =>
+    const attackTargets = getValidAttackTargets(state, enemy.id);
+    if (attackTargets.length > 0) {
+      const target = [...attackTargets].sort((a, b) =>
         a.troops - b.troops || compareIdsByCodePoint(a.id, b.id),
       )[0];
       return { unitId: enemy.id, type: 'attack', targetId: target.id };
     }
     return { unitId: enemy.id, type: 'wait' };
   });
+}
+
+function isExposedEnemyInLane(state: BattleState, target: BattleUnit): boolean {
+  const lane = getDeploymentLane(target.slot);
+  const defenders = livingUnits(state, target.side)
+    .filter((unit) => getDeploymentLane(unit.slot) === lane)
+    .sort((left, right) =>
+      DEPLOYMENT_DEPTH_ORDER[getDeploymentDepth(left.slot)]
+        - DEPLOYMENT_DEPTH_ORDER[getDeploymentDepth(right.slot)]
+      || compareIdsByCodePoint(left.id, right.id),
+    );
+  return defenders[0]?.id === target.id;
+}
+
+/** Melee units can attack the front-most living unit in a lane; archers can reach any row. */
+export function isValidAttackTarget(state: BattleState, attacker: BattleUnit, target: BattleUnit): boolean {
+  if (attacker.troops <= 0 || target.troops <= 0 || attacker.side === target.side) return false;
+  return attacker.unitClass === 'archer' || isExposedEnemyInLane(state, target);
+}
+
+export function getValidAttackTargets(state: BattleState, attackerId: string): BattleUnit[] {
+  assertBattleState(state, true);
+  const attacker = state.units.find((unit) => unit.id === attackerId);
+  if (!attacker || attacker.troops <= 0) return [];
+  return livingUnits(state, attacker.side === 'player' ? 'enemy' : 'player')
+    .filter((target) => isValidAttackTarget(state, attacker, target))
+    .sort((left, right) => compareIdsByCodePoint(left.id, right.id));
+}
+
+/**
+ * Assign all units for one side before the first round. The three assignments
+ * must cover every unit exactly once and cannot reuse a grid cell.
+ */
+export function setUnitDeployment(
+  state: BattleState,
+  side: BattleSide,
+  assignments: DeploymentAssignment[],
+): BattleState {
+  assertBattleState(state, false);
+  const combatStarted = state.log.some((entry) =>
+    entry.type !== 'battle_started' && entry.type !== 'deployment_changed',
+  );
+  if (state.round !== 1 || combatStarted) fail('deployment is locked after the first round begins');
+  if (!Array.isArray(assignments) || assignments.length !== BATTLE_RULES.unitsPerSide) {
+    fail('deployment must assign exactly three units');
+  }
+  const sideUnits = state.units.filter((unit) => unit.side === side);
+  const expectedIds = new Set(sideUnits.map((unit) => unit.id));
+  const assignedIds = new Set<string>();
+  const assignedSlots = new Set<DeploymentSlot>();
+  for (const [index, assignment] of assignments.entries()) {
+    if (!isRecord(assignment)) fail(`deployment[${index}] must be an object`);
+    assertNonEmptyString(assignment.unitId, `deployment[${index}].unitId`);
+    assertDeploymentSlot(assignment.slot, `deployment[${index}].slot`);
+    if (!expectedIds.has(assignment.unitId)) fail(`unit ${assignment.unitId} is not on side ${side}`);
+    if (assignedIds.has(assignment.unitId)) fail(`duplicate deployment unit ${assignment.unitId}`);
+    if (assignedSlots.has(assignment.slot)) fail(`duplicate deployment slot ${assignment.slot}`);
+    assignedIds.add(assignment.unitId);
+    assignedSlots.add(assignment.slot);
+  }
+  for (const unit of sideUnits) {
+    if (!assignedIds.has(unit.id)) fail(`deployment is missing unit ${unit.id}`);
+  }
+
+  const next = cloneState(state);
+  const slotByUnitId = new Map(assignments.map((assignment) => [assignment.unitId, assignment.slot]));
+  next.units = next.units.map((unit) => unit.side === side
+    ? { ...unit, slot: slotByUnitId.get(unit.id)! }
+    : unit);
+  const orderedAssignments = assignments
+    .map((assignment) => ({ ...assignment }))
+    .sort((left, right) => compareIdsByCodePoint(left.unitId, right.unitId));
+  next.log.push({ type: 'deployment_changed', round: next.round, side, assignments: orderedAssignments });
+  assertBattleState(next, true);
+  return next;
 }
 
 function validateRoundInput(state: BattleState, input: unknown): asserts input is RoundInput {
@@ -628,6 +709,9 @@ function validateRoundInput(state: BattleState, input: unknown): asserts input i
     if (!target) fail(`unknown target ${rawOrder.targetId}`);
     if (target.troops <= 0) fail(`defeated target ${target.id} cannot be selected`);
     if (target.side === actor.side) fail(`unit ${actor.id} cannot target a friendly unit`);
+    if (rawOrder.type === 'attack' && !isValidAttackTarget(state, actor, target)) {
+      fail(`target ${target.id} is screened by the frontline`);
+    }
     if (rawOrder.type === 'scheme' && actor.schemeUsed) fail(`unit ${actor.id} has already used Scheme`);
   }
 
@@ -649,14 +733,26 @@ function calculateCasualties(
     + attacker.stats.leadership * BATTLE_RULES.leadershipCasualtyWeight;
   const strength = BATTLE_RULES.strengthBase
     + BATTLE_RULES.strengthTroopWeight * (attacker.troops / attacker.maxTroops);
-  const outgoing = state.formations[attacker.side] === 'arrow' ? BATTLE_RULES.arrowOutgoingMultiplier : 1;
-  const incoming = state.formations[defender.side] === 'square' ? BATTLE_RULES.squareIncomingMultiplier : 1;
+  const attackerFormation = state.formations[attacker.side];
+  const defenderFormation = state.formations[defender.side];
+  const outgoing = attackerFormation === 'arrow'
+    ? BATTLE_RULES.arrowOutgoingMultiplier
+    : attackerFormation === 'wedge'
+      ? (attacker.unitClass === 'cavalry' ? BATTLE_RULES.wedgeCavalryOutgoingMultiplier : BATTLE_RULES.wedgeOtherOutgoingMultiplier)
+      : attackerFormation === 'turtle' ? BATTLE_RULES.turtleOutgoingMultiplier : 1;
+  const incoming = defenderFormation === 'square'
+    ? BATTLE_RULES.squareIncomingMultiplier
+    : defenderFormation === 'turtle' ? BATTLE_RULES.turtleIncomingMultiplier : 1;
+  const flank = attacker.unitClass === 'cavalry'
+    && getDeploymentLane(attacker.slot) !== getDeploymentLane(defender.slot)
+    ? BATTLE_RULES.cavalryFlankMultiplier
+    : 1;
   const guard = defenderWasGuarded ? BATTLE_RULES.guardMultiplier : 1;
   const suppression = attackerWasSuppressed ? BATTLE_RULES.suppressionMultiplier : 1;
   return Math.min(
     defender.troops,
     Math.max(BATTLE_RULES.minimumCasualties,
-      Math.round(base * strength * outgoing * incoming * guard * suppression * skillMultiplier)),
+      Math.round(base * strength * outgoing * incoming * flank * guard * suppression * skillMultiplier)),
   );
 }
 
