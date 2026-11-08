@@ -52,6 +52,7 @@ export interface BattleUnit extends BattleUnitConfig {
 export type UnitOrder =
   | { unitId: string; type: 'attack'; targetId: string }
   | { unitId: string; type: 'scheme'; targetId: string }
+  | { unitId: string; type: 'skill'; targetId?: string }
   | { unitId: string; type: 'wait' };
 
 export interface RoundInput {
@@ -65,6 +66,8 @@ export type BattleLogEntry =
   | { type: 'unit_attacked'; round: number; attackerId: string; targetId: string; hitChance: number; roll: number; hit: boolean }
   | { type: 'troops_lost'; round: number; targetId: string; casualties: number; remainingTroops: number }
   | { type: 'scheme_attempted'; round: number; casterId: string; targetId: string; successChance: number; roll: number; success: boolean }
+  | { type: 'general_skill_used'; round: number; skillId: string; casterId: string; targetId: string; effectType: 'heal_troops' | 'damage' | 'suppress' | 'guard'; success: boolean }
+  | { type: 'troops_restored'; round: number; targetId: string; amount: number; remainingTroops: number }
   | { type: 'unit_guarded'; round: number; unitId: string }
   | { type: 'unit_defeated'; round: number; unitId: string; side: BattleSide }
   | { type: 'order_skipped'; round: number; unitId: string; reason: 'unit_defeated' | 'target_defeated' }
@@ -398,12 +401,64 @@ export function chooseEnemyFormation(state: BattleState): Formation {
   return remainingTroops(state, 'enemy') >= remainingTroops(state, 'player') ? 'arrow' : 'square';
 }
 
+/** Determine whether a skill target satisfies its owner's typed target rule. */
+export function isValidSkillTarget(
+  actor: BattleUnit,
+  target: BattleUnit,
+  definition: GeneralSkillDefinition,
+): boolean {
+  if (target.troops <= 0) return false;
+  switch (definition.target) {
+    case 'self':
+      return target.id === actor.id;
+    case 'ally':
+      if (target.side !== actor.side || target.id === actor.id) return false;
+      return definition.effect.type !== 'heal_troops' || target.troops < target.maxTroops;
+    case 'enemy':
+      return target.side !== actor.side;
+    case 'enemy_frontline':
+      // Transitional pre-deployment rule: infantry and cavalry are frontline
+      // eligible; the deployment phase will replace this class rule with slots.
+      return target.side !== actor.side && target.unitClass !== 'archer';
+    case 'enemy_all':
+      return target.side !== actor.side;
+  }
+}
+
+function skillTargetsFor(state: BattleState, actor: BattleUnit, definition: GeneralSkillDefinition): BattleUnit[] {
+  if (definition.target === 'self') return [actor];
+  if (definition.target === 'enemy_all') {
+    return livingUnits(state, actor.side === 'player' ? 'enemy' : 'player');
+  }
+  if (definition.target === 'ally') {
+    return state.units
+      .filter((unit) => isValidSkillTarget(actor, unit, definition))
+      .sort((a, b) => a.troops - b.troops || compareIdsByCodePoint(a.id, b.id));
+  }
+  return state.units
+    .filter((unit) => isValidSkillTarget(actor, unit, definition))
+    .sort((a, b) => a.troops - b.troops || compareIdsByCodePoint(a.id, b.id));
+}
+
 /** Enemy orders are returned in stable unit-ID order and do not consume RNG. */
 export function chooseEnemyOrders(state: BattleState): UnitOrder[] {
   assertBattleState(state, true);
   const enemies = livingUnits(state, 'enemy').sort((a, b) => compareIdsByCodePoint(a.id, b.id));
   const players = livingUnits(state, 'player');
   return enemies.map((enemy) => {
+    if (enemy.skillId && enemy.skillState
+      && enemy.skillState.cooldownRemaining === 0
+      && enemy.skillState.usesRemaining > 0) {
+      const definition = getGeneralSkillById(enemy.skillId);
+      if (definition && definition.ownerGeneralId === enemy.generalId) {
+        const targets = skillTargetsFor(state, enemy, definition);
+        const target = targets[0];
+        if (definition.target === 'enemy_all' && targets.length > 0) {
+          return { unitId: enemy.id, type: 'skill' };
+        }
+        if (target) return { unitId: enemy.id, type: 'skill', targetId: target.id };
+      }
+    }
     if (enemy.stats.intelligence >= 65 && !enemy.schemeUsed && players.length > 0) {
       const target = [...players].sort((a, b) =>
         b.stats.martial - a.stats.martial || compareIdsByCodePoint(a.id, b.id),
@@ -444,6 +499,24 @@ function validateRoundInput(state: BattleState, input: unknown): asserts input i
     if (actor.troops <= 0) fail(`defeated unit ${actor.id} cannot submit an order`);
 
     if (rawOrder.type === 'wait') continue;
+    if (rawOrder.type === 'skill') {
+      if (!actor.skillId || !actor.skillState) fail(`unit ${actor.id} has no personal skill`);
+      const definition = getGeneralSkillById(actor.skillId);
+      if (!definition || definition.ownerGeneralId !== actor.generalId) fail(`unit ${actor.id} does not own its skill`);
+      if (actor.skillState.skillId !== definition.id) fail(`unit ${actor.id} skill state does not match its skill`);
+      if (actor.skillState.usesRemaining <= 0) fail(`skill ${definition.id} has no uses remaining`);
+      if (actor.skillState.cooldownRemaining > 0) fail(`skill ${definition.id} is on cooldown`);
+      if (definition.target === 'enemy_all') {
+        if (rawOrder.targetId !== undefined) fail(`skill ${definition.id} does not accept a single target`);
+        if (!livingUnits(state, actor.side === 'player' ? 'enemy' : 'player').length) fail(`skill ${definition.id} has no valid targets`);
+        continue;
+      }
+      assertNonEmptyString(rawOrder.targetId, `orders[${index}].targetId`);
+      const target = unitsById.get(rawOrder.targetId);
+      if (!target) fail(`unknown target ${rawOrder.targetId}`);
+      if (!isValidSkillTarget(actor, target, definition)) fail(`target ${target.id} is invalid for skill ${definition.id}`);
+      continue;
+    }
     if (rawOrder.type !== 'attack' && rawOrder.type !== 'scheme') fail(`orders[${index}].type is invalid`);
     assertNonEmptyString(rawOrder.targetId, `orders[${index}].targetId`);
     const target = unitsById.get(rawOrder.targetId);
@@ -455,6 +528,143 @@ function validateRoundInput(state: BattleState, input: unknown): asserts input i
 
   for (const unit of living) {
     if (!seen.has(unit.id)) fail(`missing order for living unit ${unit.id}`);
+  }
+}
+
+function calculateCasualties(
+  attacker: BattleUnit,
+  defender: BattleUnit,
+  state: BattleState,
+  defenderWasGuarded: boolean,
+  attackerWasSuppressed: boolean,
+  skillMultiplier = 1,
+): number {
+  const base = BATTLE_RULES.baseCasualties
+    + attacker.stats.martial * BATTLE_RULES.martialCasualtyWeight
+    + attacker.stats.leadership * BATTLE_RULES.leadershipCasualtyWeight;
+  const strength = BATTLE_RULES.strengthBase
+    + BATTLE_RULES.strengthTroopWeight * (attacker.troops / attacker.maxTroops);
+  const outgoing = state.formations[attacker.side] === 'arrow' ? BATTLE_RULES.arrowOutgoingMultiplier : 1;
+  const incoming = state.formations[defender.side] === 'square' ? BATTLE_RULES.squareIncomingMultiplier : 1;
+  const guard = defenderWasGuarded ? BATTLE_RULES.guardMultiplier : 1;
+  const suppression = attackerWasSuppressed ? BATTLE_RULES.suppressionMultiplier : 1;
+  return Math.min(
+    defender.troops,
+    Math.max(BATTLE_RULES.minimumCasualties,
+      Math.round(base * strength * outgoing * incoming * guard * suppression * skillMultiplier)),
+  );
+}
+
+function markDefeatedIfNeeded(state: BattleState, target: BattleUnit): boolean {
+  if (target.troops !== 0) return false;
+  state.log.push({ type: 'unit_defeated', round: state.round, unitId: target.id, side: target.side });
+  return finishIfSideDefeated(state);
+}
+
+function resolveGeneralSkill(state: BattleState, actor: BattleUnit, order: Extract<UnitOrder, { type: 'skill' }>): boolean {
+  const skillId = actor.skillId;
+  if (!skillId || !actor.skillState) return false;
+  const definition = getGeneralSkillById(skillId);
+  if (!definition) return false;
+  const targets = definition.target === 'enemy_all'
+    ? skillTargetsFor(state, actor, definition)
+    : [state.units.find((unit) => unit.id === order.targetId)].filter((unit): unit is BattleUnit => Boolean(unit));
+  if (!targets.length) return false;
+
+  // A validated skill command consumes one use and starts its cooldown even
+  // when a damage skill misses. Invalid orders are rejected before any action.
+  actor.skillState.usesRemaining -= 1;
+  actor.skillState.cooldownRemaining = definition.cooldownRounds;
+
+  for (const target of targets) {
+    if (target.troops <= 0) continue;
+    let success = true;
+    if (definition.effect.type === 'heal_troops') {
+      const restored = Math.min(definition.effect.amount, target.maxTroops - target.troops);
+      success = restored > 0;
+      if (restored > 0) {
+        target.troops += restored;
+        state.log.push({
+          type: 'troops_restored',
+          round: state.round,
+          targetId: target.id,
+          amount: restored,
+          remainingTroops: target.troops,
+        });
+      }
+    } else if (definition.effect.type === 'damage') {
+      const suppressionMultiplier = actor.suppressed ? BATTLE_RULES.suppressionMultiplier : 1;
+      actor.suppressed = false;
+      const hitChance = calculateHitChance(actor, target);
+      const random = nextRandom(state.rngState);
+      state.rngState = random.state;
+      const hit = random.value < hitChance;
+      success = hit;
+      state.log.push({
+        type: 'unit_attacked',
+        round: state.round,
+        attackerId: actor.id,
+        targetId: target.id,
+        hitChance,
+        roll: random.value,
+        hit,
+      });
+      if (hit) {
+        const defenderWasGuarded = target.guarded;
+        if (defenderWasGuarded) target.guarded = false;
+        const casualties = calculateCasualties(
+          actor,
+          target,
+          state,
+          defenderWasGuarded,
+          suppressionMultiplier < 1,
+          definition.effect.multiplier,
+        );
+        target.troops -= casualties;
+        state.log.push({
+          type: 'troops_lost',
+          round: state.round,
+          targetId: target.id,
+          casualties,
+          remainingTroops: target.troops,
+        });
+        if (markDefeatedIfNeeded(state, target)) {
+          state.log.push({
+            type: 'general_skill_used',
+            round: state.round,
+            skillId,
+            casterId: actor.id,
+            targetId: target.id,
+            effectType: definition.effect.type,
+            success,
+          });
+          return true;
+        }
+      }
+    } else if (definition.effect.type === 'suppress') {
+      target.suppressed = true;
+    } else if (definition.effect.type === 'guard') {
+      target.guarded = true;
+    }
+
+    state.log.push({
+      type: 'general_skill_used',
+      round: state.round,
+      skillId,
+      casterId: actor.id,
+      targetId: target.id,
+      effectType: definition.effect.type,
+      success,
+    });
+  }
+  return false;
+}
+
+function tickSkillCooldowns(state: BattleState): void {
+  for (const unit of state.units) {
+    if (unit.skillState && unit.skillState.cooldownRemaining > 0) {
+      unit.skillState.cooldownRemaining = Math.max(0, unit.skillState.cooldownRemaining - 1);
+    }
   }
 }
 
@@ -518,6 +728,12 @@ export function resolveRound(state: BattleState, input: RoundInput): BattleState
       continue;
     }
 
+    if (order.type === 'skill') {
+      const finished = resolveGeneralSkill(next, actor, order);
+      if (finished) break;
+      continue;
+    }
+
     const target = unitsById.get(order.targetId)!;
     if (target.troops <= 0) {
       next.log.push({ type: 'order_skipped', round: next.round, unitId: actor.id, reason: 'target_defeated' });
@@ -566,20 +782,7 @@ export function resolveRound(state: BattleState, input: RoundInput): BattleState
     if (defenderWasGuarded) target.guarded = false;
     if (attackerSuppressed) actor.suppressed = false;
 
-    // Casualty calculation uses the statuses captured immediately before this hit.
-    const base = BATTLE_RULES.baseCasualties
-      + actor.stats.martial * BATTLE_RULES.martialCasualtyWeight
-      + actor.stats.leadership * BATTLE_RULES.leadershipCasualtyWeight;
-    const strength = BATTLE_RULES.strengthBase
-      + BATTLE_RULES.strengthTroopWeight * (actor.troops / actor.maxTroops);
-    const outgoing = next.formations[actor.side] === 'arrow' ? BATTLE_RULES.arrowOutgoingMultiplier : 1;
-    const incoming = next.formations[target.side] === 'square' ? BATTLE_RULES.squareIncomingMultiplier : 1;
-    const guard = defenderWasGuarded ? BATTLE_RULES.guardMultiplier : 1;
-    const suppression = attackerSuppressed ? BATTLE_RULES.suppressionMultiplier : 1;
-    const casualties = Math.min(
-      target.troops,
-      Math.max(BATTLE_RULES.minimumCasualties, Math.round(base * strength * outgoing * incoming * guard * suppression)),
-    );
+    const casualties = calculateCasualties(actor, target, next, defenderWasGuarded, attackerSuppressed);
 
     target.troops -= casualties;
     next.log.push({
@@ -589,12 +792,10 @@ export function resolveRound(state: BattleState, input: RoundInput): BattleState
       casualties,
       remainingTroops: target.troops,
     });
-    if (target.troops === 0) {
-      next.log.push({ type: 'unit_defeated', round: next.round, unitId: target.id, side: target.side });
-      if (finishIfSideDefeated(next)) break;
-    }
+    if (markDefeatedIfNeeded(next, target)) break;
   }
 
+  tickSkillCooldowns(next);
   if (next.phase === 'finished') return next;
 
   if (next.round >= BATTLE_RULES.maxRounds) {
