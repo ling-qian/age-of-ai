@@ -1,3 +1,10 @@
+import {
+  createInitialGeneralSkillState,
+  getGeneralSkillById,
+  getGeneralSkillForOwner,
+  type GeneralSkillState,
+} from './general-skills';
+
 /**
  * Deterministic, single-player Three Kingdoms tactical battle rules.
  *
@@ -24,6 +31,8 @@ export interface BattleUnitConfig {
   stats: GeneralStats;
   troops: number;
   maxTroops: number;
+  /** Set only when this unit is a named general with a registered personal skill. */
+  skillId?: string | null;
 }
 
 export interface BattleConfig {
@@ -33,6 +42,8 @@ export interface BattleConfig {
 
 export interface BattleUnit extends BattleUnitConfig {
   side: BattleSide;
+  skillId: string | null;
+  skillState: GeneralSkillState | null;
   schemeUsed: boolean;
   guarded: boolean;
   suppressed: boolean;
@@ -60,7 +71,7 @@ export type BattleLogEntry =
   | { type: 'battle_finished'; round: number; outcome: BattleOutcome; playerTroops: number; enemyTroops: number };
 
 export interface BattleState {
-  version: 1;
+  version: 2;
   round: number;
   phase: 'ready' | 'finished';
   rngState: number;
@@ -149,6 +160,19 @@ function assertUnitCore(value: unknown, label: string, allowZeroTroops: boolean)
   assertStats(value.stats, `${label}.stats`);
   assertInteger(value.maxTroops, 1, 1_000_000, `${label}.maxTroops`);
   assertInteger(value.troops, allowZeroTroops ? 0 : 1, value.maxTroops, `${label}.troops`);
+  if (typeof value.skillId !== 'string' && value.skillId !== null) fail(`${label}.skillId must be a string or null`);
+  if (value.skillId === null) {
+    if (value.skillState !== null) fail(`${label} without a skill cannot have skill state`);
+  } else {
+    assertNonEmptyString(value.skillId, `${label}.skillId`);
+    const definition = getGeneralSkillById(value.skillId);
+    if (!definition) fail(`${label} references unknown skill ${value.skillId}`);
+    if (definition.ownerGeneralId !== value.generalId) fail(`${label} does not own skill ${value.skillId}`);
+    if (!isRecord(value.skillState)) fail(`${label}.skillState must be an object`);
+    if (value.skillState.skillId !== value.skillId) fail(`${label}.skillState skill ID does not match unit`);
+    assertInteger(value.skillState.cooldownRemaining, 0, definition.cooldownRounds, `${label}.skillState.cooldownRemaining`);
+    assertInteger(value.skillState.usesRemaining, 0, definition.usesPerBattle, `${label}.skillState.usesRemaining`);
+  }
   if (typeof value.schemeUsed !== 'boolean' || typeof value.guarded !== 'boolean' || typeof value.suppressed !== 'boolean') {
     fail(`${label} status flags must be booleans`);
   }
@@ -208,7 +232,7 @@ export function nextRandom(state: number): { value: number; state: number } {
 
 function assertBattleState(state: unknown, allowFinished: boolean): asserts state is BattleState {
   if (!isRecord(state)) fail('state must be an object');
-  if (state.version !== 1) fail('unsupported state version');
+  if (state.version !== 2) fail('unsupported state version');
   assertInteger(state.round, 1, BATTLE_RULES.maxRounds, 'state.round');
   if (state.phase !== 'ready' && state.phase !== 'finished') fail('state.phase is invalid');
   if (!allowFinished && state.phase !== 'ready') fail('battle is already finished');
@@ -235,11 +259,49 @@ function assertBattleState(state: unknown, allowFinished: boolean): asserts stat
   }
 }
 
+export function isBattleState(value: unknown): value is BattleState {
+  try {
+    assertBattleState(value, true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Upgrade a valid M2-B version-1 battle state without replaying a round.
+ * Starter generals receive their one-time initial skill allowance; ordinary
+ * troop units remain skill-less. This function must only run for version 1.
+ */
+export function migrateBattleStateV1ToV2(value: unknown): BattleState {
+  if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.units)) {
+    fail('only a version-1 battle state can be migrated');
+  }
+  const units = value.units.map((candidate, index) => {
+    if (!isRecord(candidate) || typeof candidate.generalId !== 'string') {
+      fail(`version-1 state.units[${index}] is invalid`);
+    }
+    const skill = getGeneralSkillForOwner(candidate.generalId);
+    return {
+      ...candidate,
+      skillId: skill?.id ?? null,
+      skillState: skill ? createInitialGeneralSkillState(skill.id) : null,
+    };
+  });
+  const migrated = { ...value, version: 2, units };
+  assertBattleState(migrated, true);
+  return migrated;
+}
+
 function cloneState(state: BattleState): BattleState {
   return {
     ...state,
     formations: { ...state.formations },
-    units: state.units.map((unit) => ({ ...unit, stats: { ...unit.stats } })),
+    units: state.units.map((unit) => ({
+      ...unit,
+      stats: { ...unit.stats },
+      skillState: unit.skillState ? { ...unit.skillState } : null,
+    })),
     log: state.log.map((entry) => {
       if (entry.type === 'battle_started') {
         return { ...entry, playerUnitIds: [...entry.playerUnitIds], enemyUnitIds: [...entry.enemyUnitIds] };
@@ -258,6 +320,13 @@ function validateUnitConfig(candidate: unknown, side: BattleSide, label: string)
   assertStats(candidate.stats, `${label}.stats`);
   assertInteger(candidate.maxTroops, 1, 1_000_000, `${label}.maxTroops`);
   assertInteger(candidate.troops, 1, candidate.maxTroops, `${label}.troops`);
+  const skillId = candidate.skillId === undefined ? null : candidate.skillId;
+  if (skillId !== null) {
+    assertNonEmptyString(skillId, `${label}.skillId`);
+    const definition = getGeneralSkillById(skillId);
+    if (!definition) fail(`${label} references unknown skill ${skillId}`);
+    if (definition.ownerGeneralId !== candidate.generalId) fail(`${label} does not own skill ${skillId}`);
+  }
   return {
     id: candidate.id,
     generalId: candidate.generalId,
@@ -267,6 +336,8 @@ function validateUnitConfig(candidate: unknown, side: BattleSide, label: string)
     stats: { ...candidate.stats },
     troops: candidate.troops,
     maxTroops: candidate.maxTroops,
+    skillId,
+    skillState: skillId ? createInitialGeneralSkillState(skillId) : null,
     schemeUsed: false,
     guarded: false,
     suppressed: false,
@@ -294,7 +365,7 @@ export function createBattle(config: BattleConfig, seed: number): BattleState {
   }
 
   return {
-    version: 1,
+    version: 2,
     round: 1,
     phase: 'ready',
     rngState: seed === 0 ? BATTLE_RULES.seedFallback : seed,
