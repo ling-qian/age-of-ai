@@ -101,7 +101,7 @@ test('Liu Bei Rende restores a wounded ally, clamps at max troops, consumes one 
   const result = resolveWith(state, {
     'p-liu': { unitId: 'p-liu', type: 'skill', targetId: 'p-guan' },
   });
-  assert.equal(result.units.find((unit) => unit.id === 'p-guan')?.troops, 220);
+  assert.equal(result.units.find((unit) => unit.id === 'p-guan')?.troops, 210);
   assert.equal(result.units.find((unit) => unit.id === 'p-guan')?.maxTroops, 210);
   assert.equal(skillState(result, 'p-liu')?.usesRemaining, 1);
   assert.equal(skillState(result, 'p-liu')?.cooldownRemaining, 1);
@@ -198,7 +198,7 @@ test('a general without a skill cannot submit a skill order', () => {
 });
 
 test('cooldown decreases once at each completed round and the final use cannot be exceeded', () => {
-  let state = setTroops(makeBattle(), 'p-guan', 190);
+  let state = setTroops(makeBattle(), 'p-guan', 150);
   state = resolveWith(state, {
     'p-liu': { unitId: 'p-liu', type: 'skill', targetId: 'p-guan' },
   });
@@ -224,7 +224,8 @@ test('a skill target defeated before the caster acts is skipped without consumin
   state = setLeadership(state, 'p-liu', 120);
   state = setLeadership(state, 'p-guan', 90);
   state = setTroops(state, 'e-captain', 1);
-  const result = resolveWith(state, {
+  const hitSeed = findSeed(true, calculateHitChance(state.units.find((unit) => unit.id === 'p-liu')!, state.units.find((unit) => unit.id === 'e-captain')!));
+  const result = resolveWith({ ...state, rngState: hitSeed }, {
     'p-liu': { unitId: 'p-liu', type: 'attack', targetId: 'e-captain' },
     'p-guan': { unitId: 'p-guan', type: 'skill', targetId: 'e-captain' },
   });
