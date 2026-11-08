@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/three-kingdoms-mvp
+      - feature/m2c-save-skill-model
   pull_request:
     branches:
       - main
@@ -41,6 +42,9 @@ jobs:
 
       - name: M2-A deterministic battle rules
         run: npx tsx scripts/three_kingdoms_battle_test.ts
+
+      - name: M2-C save migration and general skill data
+        run: npx tsx scripts/three_kingdoms_campaign_save_test.ts
 
       - name: Install temporary Playwright runner
         run: npm install --no-save --package-lock=false playwright
