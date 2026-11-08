@@ -58,7 +58,7 @@ function unit(
     unitClass: overrides.unitClass ?? 'infantry',
     stats: { ...baseStats, ...(overrides.stats ?? {}) },
     troops: overrides.troops ?? 200,
-    maxTroops: overrides.maxTroops ?? 200,
+    maxTroops: overrides.maxTroops ?? Math.max(200, overrides.troops ?? 200),
     ...(overrides.slot ? { slot: overrides.slot } : {}),
   };
 }
