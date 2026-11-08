@@ -740,7 +740,7 @@ export class ThreeKingdomsScreen {
       playerColumn.appendChild(this.renderPlayerUnit(unit, state, normalizedOrders));
     }
     for (const unit of state.units.filter((candidate) => candidate.side === 'enemy')) {
-      enemyColumn.appendChild(this.renderEnemyUnit(unit));
+      enemyColumn.appendChild(this.renderEnemyUnit(unit, state));
     }
     battlefield.appendChild(playerColumn);
     battlefield.appendChild(enemyColumn);
@@ -902,20 +902,45 @@ export class ThreeKingdomsScreen {
     return card;
   }
 
-  private renderEnemyUnit(unit: BattleUnit): HTMLElement {
+  private renderEnemyUnit(unit: BattleUnit, state: BattleState): HTMLElement {
     const card = el('article', 'tk-battle-unit enemy');
+    card.dataset.unitId = unit.id;
     const heading = el('div', 'tk-battle-unit-heading');
     heading.appendChild(el('strong', '', unit.name));
     heading.appendChild(el('span', 'tk-unit-class', unitClassName(unit)));
     card.appendChild(heading);
     card.appendChild(el('div', 'tk-unit-troops', `${unit.troops} / ${unit.maxTroops} troops`));
+    card.appendChild(el('div', 'tk-unit-position', `Position: ${unit.slot.replace('-', ' · ')}`));
     const statuses = [unit.guarded ? 'Guarded' : '', unit.suppressed ? 'Suppressed' : '', unit.schemeUsed ? 'Scheme used' : '']
       .filter(Boolean);
     card.appendChild(el('div', 'tk-unit-status', statuses.length ? statuses.join(' · ') : 'Ready'));
     if (unit.troops <= 0) {
       card.classList.add('defeated');
       card.appendChild(el('span', 'tk-defeated-label', 'DEFEATED'));
+      return card;
     }
+
+    const reachLabel = el('label', 'tk-command-label',
+      unit.unitClass === 'archer' ? 'Ranged target reach' : 'Exposed melee targets',
+    );
+    const preview = el('select', 'tk-enemy-target-preview');
+    preview.dataset.unitId = unit.id;
+    preview.disabled = true;
+    const legalTargets = getValidAttackTargets(state, unit.id);
+    for (const target of legalTargets) {
+      const option = document.createElement('option');
+      option.value = target.id;
+      option.textContent = `${target.name} — ${target.slot.replace('-', ' ')}`;
+      preview.appendChild(option);
+    }
+    if (!legalTargets.length) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No exposed target';
+      preview.appendChild(option);
+    }
+    reachLabel.appendChild(preview);
+    card.appendChild(reachLabel);
     return card;
   }
 }
