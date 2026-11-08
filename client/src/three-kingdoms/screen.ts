@@ -214,7 +214,7 @@ export class ThreeKingdomsScreen {
     const loaded = loadCampaignSave(readCampaignSaveText());
     this.save = loaded.save;
     this.saveWritable = loaded.canPersist;
-    this.saveWarning = loaded.message;
+    this.saveWarning = loaded.status === 'migrated' ? null : loaded.message;
     if (loaded.status === 'migrated') this.persist();
     this.render();
   }
@@ -352,7 +352,7 @@ export class ThreeKingdomsScreen {
     shell.appendChild(el('h1', 'tk-title', 'THREE KINGDOMS'));
     shell.appendChild(el('p', 'tk-subtitle', 'FATE OF THE HAN · CAMPAIGN I: THE YELLOW TURBAN REBELLION'));
     if (this.saveWarning) {
-      const warning = el('div', 'tk-error', this.saveWarning);
+      const warning = el('div', 'tk-battle-error', this.saveWarning);
       const reset = el('button', 'btn tk-secondary', 'Discard saved data and start a new campaign');
       reset.addEventListener('click', () => this.resetCampaign());
       warning.appendChild(reset);
