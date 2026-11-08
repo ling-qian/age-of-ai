@@ -96,6 +96,7 @@ export interface RoundInput {
 export type BattleLogEntry =
   | { type: 'battle_started'; round: number; playerUnitIds: string[]; enemyUnitIds: string[] }
   | { type: 'deployment_changed'; round: number; side: BattleSide; assignments: DeploymentAssignment[] }
+  | { type: 'deployment_locked'; round: number }
   | { type: 'formation_selected'; round: number; side: BattleSide; formation: Formation }
   | { type: 'unit_attacked'; round: number; attackerId: string; targetId: string; hitChance: number; roll: number; hit: boolean }
   | { type: 'troops_lost'; round: number; targetId: string; casualties: number; remainingTroops: number }
@@ -537,6 +538,17 @@ export function isValidSkillTarget(
   }
 }
 
+/** Return only living, legal targets for a general's currently ready personal skill. */
+export function getValidSkillTargets(state: BattleState, actorId: string): BattleUnit[] {
+  assertBattleState(state, true);
+  const actor = state.units.find((unit) => unit.id === actorId);
+  if (!actor || actor.troops <= 0 || !actor.skillId || !actor.skillState
+    || actor.skillState.cooldownRemaining > 0 || actor.skillState.usesRemaining <= 0) return [];
+  const definition = getGeneralSkillById(actor.skillId);
+  if (!definition || definition.ownerGeneralId !== actor.generalId) return [];
+  return skillTargetsFor(state, actor, definition);
+}
+
 function skillTargetsFor(state: BattleState, actor: BattleUnit, definition: GeneralSkillDefinition): BattleUnit[] {
   if (definition.target === 'self') return [actor];
   if (definition.target === 'enemy_all') {
@@ -613,6 +625,17 @@ export function getValidAttackTargets(state: BattleState, attackerId: string): B
   return livingUnits(state, attacker.side === 'player' ? 'enemy' : 'player')
     .filter((target) => isValidAttackTarget(state, attacker, target))
     .sort((left, right) => compareIdsByCodePoint(left.id, right.id));
+}
+
+/** Persist the explicit transition from deployment planning into combat. */
+export function lockUnitDeployment(state: BattleState): BattleState {
+  assertBattleState(state, false);
+  if (state.round !== 1) fail('deployment cannot be locked after combat has progressed');
+  if (state.log.some((entry) => entry.type === 'deployment_locked')) return state;
+  const next = cloneState(state);
+  next.log.push({ type: 'deployment_locked', round: next.round });
+  assertBattleState(next, true);
+  return next;
 }
 
 /**
@@ -910,6 +933,9 @@ export function resolveRound(state: BattleState, input: RoundInput): BattleState
   validateRoundInput(state, input);
 
   const next = cloneState(state);
+  if (!next.log.some((entry) => entry.type === 'deployment_locked')) {
+    next.log.push({ type: 'deployment_locked', round: next.round });
+  }
   next.formations = { player: input.formations.player, enemy: input.formations.enemy };
   next.log.push(
     { type: 'formation_selected', round: next.round, side: 'player', formation: next.formations.player },
