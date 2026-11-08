@@ -95,7 +95,7 @@ Implemented on candidate `cfb7614b6dae43defb68afb8631bbba341cb0612`:
 
 M2-B is a client-only single-player tactical battle integration. It does not add server routes, multiplayer messages, or changes to the original RTS.
 
-### M2-C — General-specific skills and tactical deployment formations (**IN PROGRESS — PHASE 2 SKILL EXECUTION**)
+### M2-C — General-specific skills and tactical deployment formations (**PHASE 3 RULES COMPLETE — PHASE 4 UI NEXT**)
 
 The current M2-B build is a playable first battle, not the full tactical system. Its generic Attack/Scheme/Wait orders and army-wide Arrow/Square stance do not satisfy the requirements for unique general skills and detailed deployment.
 
@@ -117,6 +117,12 @@ Phase 1 implementation is on `feature/m2c-save-skill-model`. Campaign saves reta
 Phase 2 is complete on `feature/m2c-skill-execution`. The battle engine supports owner-validated personal-skill orders, deterministic healing/damage/suppression effects, per-skill use limits and cooldowns, round-boundary cooldown ticks, initiative-time target revalidation, and deterministic enemy skill choice. The 14-test skill-execution suite covers the three starter abilities and save/load persistence. Candidate `edaae9c69918f178b9bd136a3ea1a487c7186827` passed [CI run 42434473539](https://github.com/ling-qian/age-of-ai/actions/runs/42434473539), including all existing M1/M2-A/Phase-1 checks and the original RTS regression. This still does not complete M2-C: 3×3 deployment, positional screening, differentiated unit formations, deployment/skill UI, and final browser acceptance remain pending.
 
 **Phase 1 verification:** candidate `483597629f68287fa26a6e3cd86feb1da1036cf5` passed [GitHub Actions run 42429683074](https://github.com/ling-qian/age-of-ai/actions/runs/42429683074), including typecheck/build, original RTS smoke, 28 M2-A tests, 7 M2-C save/skill-model tests, and the Playwright browser regression. Diff audit confirms no `server/`, `shared/`, or original RTS/network files changed. This verifies only save migration and skill data registration—not skill use in combat.
+
+Phase 3 rules are complete on `feature/m2c-deployment-rules`. Campaign/battle save schema v3 migrates v1 and v2 saves; every unit has a persisted 3×3 slot; deployment assignments are validated and locked at combat start; melee line screening, archer rear access, cavalry flank damage, and four doctrines (Arrow/Square/Wedge/Turtle) are deterministic and headless-tested.
+
+Candidate `987716622db7b9e31709a2b9e8cfa54534d04494` passed [GitHub Actions run 42435222033](https://github.com/ling-qian/age-of-ai/actions/runs/42435222033): 28 M2-A, 7 save-migration, 14 skill-execution, and 16 deployment/class/formation tests, plus build/typecheck, original RTS smoke, and existing browser regression.
+
+**Phase 4 is next:** implement the 3×3 deployment board, selectable four-doctrine control, each general's skill command and valid-target controls, then full browser acceptance for placement, skill effects/cooldowns, save/reload, battle result, restart, and original RTS regression. M3 remains blocked.
 
 Only after M2-C tests pass should M3 campaign-map and recruitment work begin.
 
