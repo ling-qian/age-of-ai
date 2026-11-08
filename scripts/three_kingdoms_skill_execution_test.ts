@@ -197,7 +197,7 @@ test('Zhang Fei suppression reduces the target next attack by the configured 0.6
     ...firstRound,
     rngState: seed,
     units: firstRound.units.map((unit) => unit.id === 'e-captain'
-      ? { ...unit, suppressed: false }
+      ? { ...unit, suppressed: false, suppressedUntilRound: null }
       : unit),
   };
   const neutralResult = resolveWith(neutralState, {
