@@ -47,6 +47,10 @@ type StoryEvent = {
 const BATTLE_SEED = 0x01842026;
 const events = storyEvents as Record<string, StoryEvent>;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function livingUnits(state: BattleState, side: 'player' | 'enemy'): BattleUnit[] {
   return state.units.filter((unit) => unit.side === side && unit.troops > 0);
 }
