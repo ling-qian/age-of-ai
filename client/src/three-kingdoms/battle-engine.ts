@@ -613,8 +613,8 @@ function resolveGeneralSkill(state: BattleState, actor: BattleUnit, order: Extra
         });
       }
     } else if (definition.effect.type === 'damage') {
-      const suppressionMultiplier = actor.suppressed ? BATTLE_RULES.suppressionMultiplier : 1;
-      actor.suppressed = false;
+      const attackerWasSuppressed = consumeSuppression(actor, state.round);
+      const suppressionMultiplier = attackerWasSuppressed ? BATTLE_RULES.suppressionMultiplier : 1;
       const hitChance = calculateHitChance(actor, target);
       const random = nextRandom(state.rngState);
       state.rngState = random.state;
@@ -637,7 +637,7 @@ function resolveGeneralSkill(state: BattleState, actor: BattleUnit, order: Extra
           target,
           state,
           defenderWasGuarded,
-          suppressionMultiplier < 1,
+          attackerWasSuppressed,
           definition.effect.multiplier,
         );
         target.troops -= casualties;
@@ -670,6 +670,14 @@ function resolveGeneralSkill(state: BattleState, actor: BattleUnit, order: Extra
     }
   }
   return false;
+}
+
+function consumeSuppression(unit: BattleUnit, round: number): boolean {
+  const active = unit.suppressed
+    && (unit.suppressedUntilRound === undefined || unit.suppressedUntilRound === null || round <= unit.suppressedUntilRound);
+  unit.suppressed = false;
+  unit.suppressedUntilRound = null;
+  return active;
 }
 
 function tickSkillCooldowns(state: BattleState): void {
@@ -789,8 +797,8 @@ export function resolveRound(state: BattleState, input: RoundInput): BattleState
       continue;
     }
 
-    const suppressionMultiplier = actor.suppressed ? BATTLE_RULES.suppressionMultiplier : 1;
-    if (actor.suppressed) actor.suppressed = false;
+    const attackerWasSuppressed = consumeSuppression(actor, next.round);
+    const suppressionMultiplier = attackerWasSuppressed ? BATTLE_RULES.suppressionMultiplier : 1;
     const hitChance = calculateHitChance(actor, target);
     const random = nextRandom(next.rngState);
     next.rngState = random.state;
@@ -808,11 +816,9 @@ export function resolveRound(state: BattleState, input: RoundInput): BattleState
     if (!hit) continue;
 
     const defenderWasGuarded = target.guarded;
-    const attackerSuppressed = suppressionMultiplier < 1;
     if (defenderWasGuarded) target.guarded = false;
-    if (attackerSuppressed) actor.suppressed = false;
 
-    const casualties = calculateCasualties(actor, target, next, defenderWasGuarded, attackerSuppressed);
+    const casualties = calculateCasualties(actor, target, next, defenderWasGuarded, attackerWasSuppressed);
 
     target.troops -= casualties;
     next.log.push({
