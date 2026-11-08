@@ -23,7 +23,7 @@ export interface CampaignResources {
   allies: number;
 }
 
-export type CampaignStage = 'oath' | 'battle-entry' | 'battle';
+export type CampaignStage = 'oath' | 'battle-entry' | 'deployment' | 'battle';
 
 export interface CampaignSave {
   version: 3;
@@ -91,7 +91,7 @@ function isUnitOrderArray(value: unknown): value is UnitOrder[] {
 }
 
 function isStage(value: unknown): value is CampaignStage {
-  return value === 'oath' || value === 'battle-entry' || value === 'battle';
+  return value === 'oath' || value === 'battle-entry' || value === 'deployment' || value === 'battle';
 }
 
 function isFormation(value: unknown): value is Formation {
@@ -121,7 +121,9 @@ function buildCampaignSave(
   common: Omit<CampaignSave, 'version' | 'battleState'>,
   battleState: BattleState | null,
 ): CampaignSave {
-  const stage = common.stage === 'battle' && !battleState ? 'battle-entry' : common.stage;
+  const stage = (common.stage === 'battle' || common.stage === 'deployment') && !battleState
+    ? 'battle-entry'
+    : common.stage;
   return {
     version: CAMPAIGN_SAVE_VERSION,
     ...common,
