@@ -1156,3 +1156,37 @@ button.btn.trade-btn {
   .tk-topline { align-items: flex-start; }
   .tk-title { letter-spacing: 2px; }
 }
+
+/* Three Kingdoms M2-C tactical deployment and general skill interface */
+.tk-deployment-doctrine { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 18px 0; padding: 14px; border: 1px solid #59432b; border-radius: 6px; background: rgba(8, 7, 6, 0.35); }
+.tk-deployment-doctrine label { min-width: min(100%, 280px); }
+.tk-deployment-boards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.tk-deployment-side { min-width: 0; padding: 14px; border: 1px solid #59432b; border-radius: 7px; background: rgba(7, 6, 5, 0.32); }
+.tk-deployment-side h3 { margin: 0 0 12px; color: #e1c48a; font-size: 15px; letter-spacing: 1px; }
+.tk-deployment-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.tk-deployment-cell { min-height: 88px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 5px; padding: 8px 5px; border: 1px solid #695238; border-radius: 5px; background: linear-gradient(150deg, rgba(52, 37, 27, .82), rgba(20, 15, 12, .9)); text-align: center; }
+.tk-deployment-grid.enemy .tk-deployment-cell { background: linear-gradient(150deg, rgba(69, 31, 24, .55), rgba(20, 13, 11, .9)); }
+.tk-deployment-cell-label { color: #b49c76; font-size: 9px; letter-spacing: .8px; }
+.tk-deployment-cell-unit { color: #f2d38d; font-size: 12px; line-height: 1.25; }
+.tk-deployment-cell-class, .tk-deployment-empty { color: #b9a98d; font-size: 10px; }
+.tk-deployment-controls { display: grid; gap: 9px; margin-top: 14px; }
+.tk-deployment-unit { padding: 12px; border: 1px solid #55412c; border-radius: 5px; background: rgba(7, 6, 5, .34); }
+.tk-deployment-unit .tk-command-label { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 10px; }
+.tk-deployment-unit select { width: 100%; }
+.tk-deployment-unit .tk-unit-troops { margin-top: 6px; }
+.tk-general-skill { display: grid; gap: 4px; margin: 10px 0; padding: 9px 10px; border-left: 2px solid #be8b3d; background: rgba(130, 83, 31, .12); }
+.tk-general-skill-name { color: #f0cf83; font-size: 12px; }
+.tk-general-skill-description { margin: 0; color: #cfbea0; font-size: 11px; line-height: 1.45; }
+.tk-general-skill-limit { color: #c49c5c; font-size: 10px; }
+.tk-unit-position { margin-top: 4px; color: #c0a57a; font-size: 10px; letter-spacing: .5px; text-transform: uppercase; }
+.tk-general-skill .tk-general-skill-name { display: block; }
+@media (max-width: 720px) {
+  .tk-deployment-boards { grid-template-columns: 1fr; }
+  .tk-deployment-cell { min-height: 72px; }
+}
+@media (max-width: 440px) {
+  .tk-deployment-grid { gap: 4px; }
+  .tk-deployment-cell { min-height: 64px; padding: 5px 3px; }
+  .tk-deployment-cell-unit { font-size: 10px; }
+  .tk-deployment-cell-label { font-size: 8px; }
+}
