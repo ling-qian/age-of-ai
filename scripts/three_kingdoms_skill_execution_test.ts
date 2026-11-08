@@ -115,6 +115,9 @@ test('Liu Bei Rende rejects enemy, self, and fully restored ally targets before 
     'p-liu': { unitId: 'p-liu', type: 'skill', targetId: 'e-captain' },
   }), /invalid for skill/);
   assert.throws(() => resolveWith(state, {
+    'p-liu': { unitId: 'p-liu', type: 'skill', targetId: 'missing-unit' },
+  }), /unknown target/);
+  assert.throws(() => resolveWith(state, {
     'p-liu': { unitId: 'p-liu', type: 'skill', targetId: 'p-liu' },
   }), /invalid for skill/);
 
@@ -175,6 +178,37 @@ test('Zhang Fei Thunderous Roar suppresses an enemy frontline unit but rejects a
   assert.equal(skillState(result, 'p-zhang')?.usesRemaining, 0);
   assert.equal(skillState(result, 'p-zhang')?.cooldownRemaining, 2);
   assert.equal(logSkill(result, 'zhang-fei-thunderous-roar')[0]?.success, true);
+});
+
+test('Zhang Fei suppression reduces the target next attack by the configured 0.65 multiplier', () => {
+  const firstRound = resolveWith(makeBattle(), {
+    'p-zhang': { unitId: 'p-zhang', type: 'skill', targetId: 'e-captain' },
+  });
+  assert.equal(firstRound.round, 2);
+  const suppressed = firstRound.units.find((unit) => unit.id === 'e-captain')!;
+  assert.equal(suppressed.suppressed, true);
+  const attacker = suppressed;
+  const defender = firstRound.units.find((unit) => unit.id === 'p-liu')!;
+  const seed = findSeed(true, calculateHitChance(attacker, defender));
+  const suppressedResult = resolveWith({ ...firstRound, rngState: seed }, {
+    'e-captain': { unitId: 'e-captain', type: 'attack', targetId: 'p-liu' },
+  });
+  const neutralState = {
+    ...firstRound,
+    rngState: seed,
+    units: firstRound.units.map((unit) => unit.id === 'e-captain'
+      ? { ...unit, suppressed: false }
+      : unit),
+  };
+  const neutralResult = resolveWith(neutralState, {
+    'e-captain': { unitId: 'e-captain', type: 'attack', targetId: 'p-liu' },
+  });
+  const suppressedLoss = suppressedResult.log.find((entry) => entry.type === 'troops_lost' && entry.targetId === 'p-liu' && entry.round === 2);
+  const neutralLoss = neutralResult.log.find((entry) => entry.type === 'troops_lost' && entry.targetId === 'p-liu' && entry.round === 2);
+  assert.ok(suppressedLoss && suppressedLoss.type === 'troops_lost');
+  assert.ok(neutralLoss && neutralLoss.type === 'troops_lost');
+  assert.ok(suppressedLoss.casualties < neutralLoss.casualties);
+  assert.equal(suppressedResult.units.find((unit) => unit.id === 'e-captain')?.suppressed, false);
 });
 
 test('a personal skill cannot be used by a unit that does not own that skill', () => {
@@ -245,7 +279,7 @@ test('a skill target defeated before the caster acts is skipped without consumin
 });
 
 test('duplicate commands cannot grant a general a second action in the same round', () => {
-  const state = makeBattle();
+  const state = setTroops(makeBattle(), 'p-guan', 190);
   const duplicate = ordersWith(state, {
     'p-liu': { unitId: 'p-liu', type: 'skill', targetId: 'p-guan' },
   });
