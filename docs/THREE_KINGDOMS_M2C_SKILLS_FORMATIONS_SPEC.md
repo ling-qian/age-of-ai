@@ -261,7 +261,7 @@ Forbidden:
 - Source-diff audit against `feature/three-kingdoms-mvp` shows only Three Kingdoms client files, Three Kingdoms tests/docs, and the validation workflow changed; no `server/`, `shared/`, or original RTS/network files changed.
 - **Not implemented in this phase:** skill execution, cooldown ticking, deployment positions, line-screening, positional target validation, skill UI controls, or the full M2-C browser acceptance flow.
 
-### Phase 2 — General skill execution (implementation in progress)
+### Phase 2 — General skill execution (COMPLETE / CI VERIFIED)
 
 - Added a typed `skill` unit order to the deterministic battle engine. A unit can submit only one order per round; a personal skill consumes that order.
 - Enforced skill ownership, exact owner-to-skill mapping, remaining-use limits, cooldown readiness, living-target checks, side/target-pattern rules, and revalidation when initiative reaches the caster.
@@ -270,8 +270,9 @@ Forbidden:
 - Cooldowns tick once at the end of each completed round and clamp at zero. Suppression has a saved expiry round and is cleared after its defined round or when its next outgoing attack consumes it.
 - Enemy AI can select ready personal skills deterministically and follows the same ownership, target, cooldown, and use rules.
 - The provisional `enemy_frontline` target rule currently admits infantry/cavalry and excludes archers. Phase 3 will replace this pre-deployment class proxy with the actual 3×3 front-line positions.
-- Added `scripts/three_kingdoms_skill_execution_test.ts` and a CI step. It covers skill effects, target rejection, ownership, use limits, cooldown, skipped targets, duplicate orders, AI selection, suppression reduction, and save/load restoration.
-- **Still outstanding:** final CI on the current candidate, deployment positions, unit-type combat identity, battlefield formations, player skill controls, deployment UI, and full M2-C browser acceptance.
+- Added `scripts/three_kingdoms_skill_execution_test.ts` and a CI step. It covers skill effects, target rejection, ownership, use limits, cooldown, skipped targets, duplicate orders, AI selection, suppression reduction, and save/load restoration (14/14 pass).
+- Verified on candidate `edaae9c69918f178b9bd136a3ea1a487c7186827` in [GitHub Actions run 42434473539](https://github.com/ling-qian/age-of-ai/actions/runs/42434473539): typecheck, production build, original RTS WebSocket smoke, M2-A 28/28, save/skill model 7/7, skill execution 14/14, and the current Playwright regression all passed.
+- **Still outstanding:** 3×3 deployment positions, frontline screening, positional target validation, richer unit-class combat roles, additional army formations, deployment UI, visible skill controls, and the final M2-C browser acceptance flow.
 
 ## 10. M2-C completion gate
 
