@@ -433,7 +433,7 @@ async function testOriginalRtsMultiplayer(browser) {
 async function testThreeKingdomsBattle(browser) {
   const context = await browser.newContext({ locale: 'en-US' });
   const page = await context.newPage();
-  const playerName = 'm2b-battle-ui';
+  const playerName = 'm2c-tactical-ui';
   const settingsValue = JSON.stringify({
     lang: 'en',
     musicVol: 0.2,
@@ -453,192 +453,200 @@ async function testThreeKingdomsBattle(browser) {
 
   await page.addInitScript(({ playerName, settingsValue, campaignSave }) => {
     // Playwright init scripts execute on every navigation, including reload.
-    // Seed only once per tab so a refresh exercises real persisted battle data
-    // instead of overwriting round 2 with the original battle-entry fixture.
     if (sessionStorage.getItem('__m2b_campaign_seeded') === '1') return;
     localStorage.setItem('ageofai:name', playerName);
     localStorage.setItem('ageofai:settings', settingsValue);
     localStorage.setItem('ageofai:three-kingdoms:campaign:v1', JSON.stringify(campaignSave));
     sessionStorage.setItem('__m2b_campaign_seeded', '1');
   }, { playerName, settingsValue, campaignSave });
-  collectSocketMessages(page, [], 'M2-B battle UI');
+  collectSocketMessages(page, [], 'M2-C tactical UI');
+
+  const readSave = () => page.evaluate(() => JSON.parse(
+    localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
+  ));
 
   try {
     await page.goto(BASE_URL);
     await page.locator('.tk-launch-btn').click();
     await page.locator('.tk-event-title').filter({ hasText: 'The Yellow Turban Rebellion' }).waitFor();
-    const migratedCampaign = await page.evaluate(() => JSON.parse(
-      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
-    ));
+
+    const migratedCampaign = await readSave();
     assert.equal(migratedCampaign.version, 3, 'opening a v1 campaign must persist the version-3 migration');
     assert.equal(migratedCampaign.stage, 'battle-entry', 'campaign migration must preserve the briefing stage');
+
     await page.locator('.tk-begin-battle').click();
+    await page.locator('.tk-deployment-panel').waitFor();
+    assert.equal(await page.locator('.tk-deployment-grid.player .tk-deployment-cell').count(), 9, 'player deployment board must have nine cells');
+    assert.equal(await page.locator('.tk-deployment-grid.enemy .tk-deployment-cell').count(), 9, 'enemy intelligence board must have nine cells');
+    assert.equal(await page.locator('.tk-deployment-slot-select').count(), 3, 'each general must have one deployment selector');
+    assert.equal(await page.locator('.tk-deployment-doctrine-select option').count(), 4, 'deployment must offer four army doctrines');
 
-    await page.locator('.tk-battle-panel').waitFor();
-    const initializedCampaign = await page.evaluate(() => JSON.parse(
-      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
-    ));
-    assert.equal(initializedCampaign.version, 3, 'new campaign writes must remain on save schema version 3');
-    assert.equal(initializedCampaign.battleState.version, 3, 'new battles must use battle-state schema version 3');
-    assert.deepEqual(
-      initializedCampaign.battleState.units.filter((unit) => unit.side === 'player').map((unit) => unit.skillId),
-      ['liu-bei-rende', 'guan-yu-qinglong-strike', 'zhang-fei-thunderous-roar'],
-      'each starter general must persist a distinct personal skill ID',
-    );
-    assert.equal(await page.locator('.tk-battle-unit.player').count(), 3, 'battle UI must show three player units');
-    assert.equal(await page.locator('.tk-battle-unit.enemy').count(), 3, 'battle UI must show three enemy units');
-    assert.equal(await page.locator('.tk-order-type').count(), 3, 'each living player unit must receive one order control');
+    await page.locator('.tk-deployment-slot-select[data-unit-id="player-guan-yu"]').selectOption('middle-left');
+    await page.locator('.tk-deployment-slot-select[data-unit-id="player-zhang-fei"]').selectOption('rear-right');
+    await page.locator('.tk-deployment-doctrine-select').selectOption('wedge');
 
-    // Configure all three order types and a non-default formation using the
-    // real DOM controls. Each change persists the order into the campaign save.
-    await page.locator('.tk-formation-select').selectOption('square');
-    await page.locator('.tk-order-target[data-unit-id="player-liu-bei"]').selectOption('enemy-raider-captain');
-    await page.locator('.tk-order-type[data-unit-id="player-guan-yu"]').selectOption('scheme');
-    await page.locator('.tk-order-target[data-unit-id="player-guan-yu"]').selectOption('enemy-rebel-archer');
-    await page.locator('.tk-order-type[data-unit-id="player-zhang-fei"]').selectOption('wait');
-
-    const pending = await page.evaluate(() => JSON.parse(
-      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
-    ));
-    console.log('M2-B pending player orders:', JSON.stringify(pending?.playerOrders));
-    assert.equal(pending?.playerOrders?.length, 3, 'the UI must persist one order per player unit before round resolution');
-
-    await page.locator('.tk-resolve-round').click();
-    try {
-      await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 2' }).waitFor({ timeout: 10_000 });
-    } catch (error) {
-      console.error('M2-B battle error panel:', await page.locator('.tk-battle-error').textContent().catch(() => '(none)'));
-      console.error('M2-B battle UI text:', await page.locator('.tk-battle-panel').innerText().catch(() => '(battle panel missing)'));
-      console.error('M2-B browser errors:', browserErrors.join(' | ') || '(none)');
-      console.error('M2-B persisted battle state:', JSON.stringify(await page.evaluate(() => JSON.parse(
-        localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
-      ))));
-      throw error;
-    }
-    const persisted = await page.evaluate(() => ({
-      campaign: JSON.parse(localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null'),
-      name: localStorage.getItem('ageofai:name'),
-      settings: localStorage.getItem('ageofai:settings'),
-    }));
-    assert.equal(persisted.campaign.stage, 'battle', 'the battle stage must be saved');
-    assert.equal(persisted.campaign.battleState.round, 2, 'resolving a round must advance the saved round');
-    assert.equal(persisted.campaign.battleState.formations.player, 'square', 'the selected formation must be saved');
-    assert.ok(persisted.campaign.battleState.log.some((entry) => entry.type === 'unit_attacked'), 'Attack must create a structured battle log entry');
-    assert.ok(persisted.campaign.battleState.log.some((entry) => entry.type === 'scheme_attempted'), 'Scheme must create a structured battle log entry');
-    assert.ok(persisted.campaign.battleState.log.some((entry) => entry.type === 'unit_guarded'), 'Wait must create a guarded log entry');
-    assert.equal(persisted.campaign.battleState.units.length, 6, 'the save must retain all six battle units');
-    assert.equal(persisted.name, playerName, 'battle save must preserve the original RTS name');
-    assert.equal(persisted.settings, settingsValue, 'battle save must preserve the original RTS preferences');
-
-    const logCount = persisted.campaign.battleState.log.length;
-    console.log('M2-B pre-refresh battle save:', JSON.stringify({
-      stage: persisted.campaign.stage,
-      round: persisted.campaign.battleState.round,
-      phase: persisted.campaign.battleState.phase,
-      rngState: persisted.campaign.battleState.rngState,
-      unitCount: persisted.campaign.battleState.units.length,
-      logCount,
-    }));
+    let deploymentSave = await readSave();
+    assert.equal(deploymentSave.stage, 'deployment', 'the campaign must persist a distinct deployment stage');
+    assert.equal(deploymentSave.version, 3);
+    assert.equal(deploymentSave.battleState.version, 3);
+    const positions = Object.fromEntries(deploymentSave.battleState.units
+      .filter((unit) => unit.side === 'player')
+      .map((unit) => [unit.id, unit.slot]));
+    assert.deepEqual(positions, {
+      'player-liu-bei': 'front-center',
+      'player-guan-yu': 'middle-left',
+      'player-zhang-fei': 'rear-right',
+    }, 'player-selected deployment positions must be saved');
+    assert.equal(new Set(Object.values(positions)).size, 3, 'all deployed generals must occupy unique cells');
+    assert.equal(deploymentSave.playerFormation, 'wedge', 'pre-battle doctrine must be saved separately');
 
     await page.reload();
     await page.locator('.tk-launch-btn').waitFor({ timeout: 10_000 });
-    const afterReloadBeforeLaunch = await page.evaluate(() => ({
-      campaign: JSON.parse(localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null'),
-      name: localStorage.getItem('ageofai:name'),
-      settings: localStorage.getItem('ageofai:settings'),
-    }));
-    console.log('M2-B raw storage after reload, before opening mode:', JSON.stringify({
-      stage: afterReloadBeforeLaunch.campaign?.stage,
-      round: afterReloadBeforeLaunch.campaign?.battleState?.round,
-      phase: afterReloadBeforeLaunch.campaign?.battleState?.phase,
-      rngState: afterReloadBeforeLaunch.campaign?.battleState?.rngState,
-      unitCount: afterReloadBeforeLaunch.campaign?.battleState?.units?.length,
-      logCount: afterReloadBeforeLaunch.campaign?.battleState?.log?.length,
-    }));
     await page.locator('.tk-launch-btn').click();
-    try {
-      await page.locator('.tk-battle-panel .tk-battle-unit.player').first().waitFor({ timeout: 10_000 });
-      console.log('M2-B restored screen immediately after launch:', await page.locator('.tk-shell').innerText());
-      await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 2' }).waitFor({ timeout: 10_000 });
-    } catch (error) {
-      console.error('M2-B page text after reload/launch:', await page.locator('#app').innerText().catch(() => '(app missing)'));
-      console.error('M2-B browser errors after reload/launch:', browserErrors.join(' | ') || '(none)');
-      console.error('M2-B local storage after reload/launch:', JSON.stringify(await page.evaluate(() => JSON.parse(
-        localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
-      ))));
-      throw error;
-    }
-    assert.equal(await page.locator('.tk-battle-unit.player').count(), 3, 'refresh must restore player units');
-    assert.equal(await page.locator('.tk-battle-unit.enemy').count(), 3, 'refresh must restore enemy units');
-    assert.equal(await page.locator('.tk-formation-select').inputValue(), 'square', 'refresh must restore the selected formation');
-    assert.equal(await page.locator('.tk-battle-log li').count(), Math.min(logCount, 30), 'refresh must restore the battle log');
-    const restored = await page.evaluate(() => ({
-      campaign: JSON.parse(localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null'),
-      name: localStorage.getItem('ageofai:name'),
-      settings: localStorage.getItem('ageofai:settings'),
-    }));
-    assert.equal(restored.campaign.battleState.round, 2, 'refresh must not rerun or rewind the round');
-    assert.equal(restored.campaign.battleState.log.length, logCount, 'refresh must preserve the existing log exactly');
-    assert.equal(restored.name, playerName, 'refresh must preserve the RTS name');
-    assert.equal(restored.settings, settingsValue, 'refresh must preserve RTS preferences');
+    await page.locator('.tk-deployment-panel').waitFor();
+    assert.equal(await page.locator('.tk-deployment-slot-select[data-unit-id="player-guan-yu"]').inputValue(), 'middle-left', 'refresh must restore Guan Yu position');
+    assert.equal(await page.locator('.tk-deployment-slot-select[data-unit-id="player-zhang-fei"]').inputValue(), 'rear-right', 'refresh must restore Zhang Fei position');
+    assert.equal(await page.locator('.tk-deployment-doctrine-select').inputValue(), 'wedge', 'refresh must restore deployment doctrine');
+    console.log('PASS — M2-C deployment board restores unique general slots and doctrine after reload');
 
-    // Continue the same battle through the UI until the engine returns a
-    // terminal outcome. This verifies the M2-B result panel, not just M2-A math.
-    let lastRound = restored.campaign.battleState.round;
+    await page.locator('.tk-start-deployed-battle').click();
+    await page.locator('.tk-battle-panel').waitFor();
+    let battleSave = await readSave();
+    assert.equal(battleSave.stage, 'battle', 'locking deployment must enter battle stage');
+    assert.ok(battleSave.battleState.log.some((entry) => entry.type === 'deployment_locked'), 'deployment lock must be persisted in the battle log');
+    assert.equal(await page.locator('.tk-battle-unit.player').count(), 3);
+    assert.equal(await page.locator('.tk-battle-unit.enemy').count(), 3);
+    assert.equal(await page.locator('.tk-formation-select option').count(), 4, 'battle screen must expose all four doctrine choices');
+    assert.equal(await page.locator('.tk-unit-position').count(), 3, 'battle cards must show each general position');
+
+    await page.locator('.tk-formation-select').selectOption('square');
+    await page.locator('.tk-order-type[data-unit-id="player-liu-bei"]').selectOption('wait');
+    await page.locator('.tk-order-type[data-unit-id="player-guan-yu"]').selectOption('skill');
+    await page.locator('.tk-order-target[data-unit-id="player-guan-yu"]').selectOption('enemy-raider-captain');
+    await page.locator('.tk-order-type[data-unit-id="player-zhang-fei"]').selectOption('skill');
+    await page.locator('.tk-order-target[data-unit-id="player-zhang-fei"]').selectOption('enemy-rebel-spearman');
+
+    const pendingOrders = await readSave();
+    assert.equal(pendingOrders.battleState.formations.player, 'arrow', 'pending doctrine change stays in campaign save until round resolution');
+    assert.equal(pendingOrders.playerFormation, 'square');
+    assert.equal(pendingOrders.playerOrders.length, 3, 'every player general must have one saved order');
+    assert.deepEqual(pendingOrders.playerOrders.map((order) => order.type).sort(), ['skill', 'skill', 'wait']);
+
+    await page.locator('.tk-resolve-round').click();
+    await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 2' }).waitFor({ timeout: 10_000 });
+    battleSave = await readSave();
+    assert.equal(battleSave.battleState.round, 2);
+    assert.equal(battleSave.battleState.formations.player, 'square');
+    assert.ok(battleSave.battleState.log.some((entry) => entry.type === 'general_skill_used' && entry.skillId === 'guan-yu-qinglong-strike'), 'Guan Yu skill must resolve in the live battle UI');
+    assert.ok(battleSave.battleState.log.some((entry) => entry.type === 'general_skill_used' && entry.skillId === 'zhang-fei-thunderous-roar'), 'Zhang Fei skill must resolve in the live battle UI');
+    assert.equal(battleSave.battleState.units.find((unit) => unit.id === 'player-guan-yu').skillState.usesRemaining, 1);
+    assert.equal(battleSave.battleState.units.find((unit) => unit.id === 'player-guan-yu').skillState.cooldownRemaining, 2);
+    assert.equal(battleSave.battleState.units.find((unit) => unit.id === 'player-zhang-fei').skillState.usesRemaining, 0);
+    assert.equal(battleSave.battleState.units.find((unit) => unit.id === 'player-zhang-fei').skillState.cooldownRemaining, 2);
+    assert.equal(battleSave.battleState.units.find((unit) => unit.id === 'player-guan-yu').slot, 'middle-left', 'combat must retain deployment positions');
+    assert.equal(battleSave.battleState.units.find((unit) => unit.id === 'player-zhang-fei').slot, 'rear-right');
+    assert.equal(battleSave.name, undefined, 'RTS identity must not be copied into campaign save');
+    assert.equal(battleSave.playerFormation, 'square');
+    assert.ok(await page.locator('.tk-general-skill').count() === 3, 'all three general skill panels must be visible');
+    console.log('PASS — M2-C live tactical UI resolves Guan Yu and Zhang Fei skills with saved cooldowns and uses');
+
+    // Ensure Rende has a valid wounded ally to heal. The fixed opening battle
+    // normally wounds Guan Yu through the exposed left lane; seed a deterministic
+    // legal wounded-state fixture only if every ally remained at full strength.
+    battleSave = await readSave();
+    const guan = battleSave.battleState.units.find((unit) => unit.id === 'player-guan-yu');
+    if (guan.troops === guan.maxTroops) {
+      guan.troops = guan.maxTroops - 40;
+      await page.evaluate((save) => {
+        localStorage.setItem('ageofai:three-kingdoms:campaign:v1', JSON.stringify(save));
+      }, battleSave);
+      await page.reload();
+      await page.locator('.tk-launch-btn').waitFor({ timeout: 10_000 });
+      await page.locator('.tk-launch-btn').click();
+      await page.locator('.tk-battle-panel').waitFor();
+    }
+    await page.locator('.tk-order-type[data-unit-id="player-liu-bei"]').selectOption('skill');
+    await page.locator('.tk-order-target[data-unit-id="player-liu-bei"]').selectOption('player-guan-yu');
+    await page.locator('.tk-resolve-round').click();
+    await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 3' }).waitFor({ timeout: 10_000 });
+    battleSave = await readSave();
+    assert.ok(battleSave.battleState.units.find((unit) => unit.id === 'player-guan-yu').troops > guan.troops, 'Liu Bei Rende must restore Guan Yu troops in the browser battle');
+    assert.ok(battleSave.battleState.log.some((entry) => entry.type === 'general_skill_used' && entry.skillId === 'liu-bei-rende'), 'Liu Bei skill must be logged');
+    assert.equal(battleSave.battleState.units.find((unit) => unit.id === 'player-liu-bei').skillState.usesRemaining, 1);
+    assert.equal(battleSave.battleState.units.find((unit) => unit.id === 'player-liu-bei').skillState.cooldownRemaining, 1);
+    console.log('PASS — M2-C Liu Bei Rende heals a wounded ally through the live UI');
+
+    const beforeRefresh = await readSave();
+    const savedLogCount = beforeRefresh.battleState.log.length;
+    await page.reload();
+    await page.locator('.tk-launch-btn').waitFor({ timeout: 10_000 });
+    await page.locator('.tk-launch-btn').click();
+    await page.locator('.tk-battle-panel').waitFor();
+    const restored = await readSave();
+    assert.equal(restored.battleState.round, 3, 'refresh must not replay or rewind a round');
+    assert.equal(restored.battleState.log.length, savedLogCount, 'refresh must preserve battle log');
+    assert.deepEqual(
+      restored.battleState.units.filter((unit) => unit.side === 'player').map((unit) => unit.slot),
+      ['front-center', 'middle-left', 'rear-right'],
+      'refresh must preserve exact deployed positions',
+    );
+    assert.equal(restored.battleState.formations.player, 'square', 'refresh must preserve the selected army doctrine');
+    assert.deepEqual(
+      restored.battleState.units.find((unit) => unit.id === 'player-liu-bei').skillState,
+      { skillId: 'liu-bei-rende', cooldownRemaining: 1, usesRemaining: 1 },
+    );
+    assert.deepEqual(
+      restored.battleState.units.find((unit) => unit.id === 'player-guan-yu').skillState,
+      { skillId: 'guan-yu-qinglong-strike', cooldownRemaining: 1, usesRemaining: 1 },
+    );
+    assert.equal(restored.name, undefined);
+    assert.equal(await page.locator('.tk-deployment-panel').count(), 0, 'a saved active battle must restore directly to combat, not deployment');
+    assert.equal(await page.locator('.tk-unit-position').count(), 3, 'positions must remain visible after reload');
+    console.log('PASS — M2-C battle refresh preserves skill cooldowns, uses, positions, doctrine and log');
+
+    let lastRound = restored.battleState.round;
     for (let attempt = 0; attempt < 20; attempt++) {
-      const snapshot = await page.evaluate(() => JSON.parse(
-        localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
-      ));
+      const snapshot = await readSave();
       if (snapshot?.battleState?.phase === 'finished') break;
-      assert.ok(snapshot?.battleState?.phase === 'ready', 'battle must remain ready until it finishes');
+      assert.equal(snapshot?.battleState?.phase, 'ready', 'battle must stay ready until it reaches a result');
       await page.locator('.tk-resolve-round').click();
       await waitUntil(async () => {
-        const next = await page.evaluate(() => JSON.parse(
-          localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
-        ));
+        const next = await readSave();
         return next?.battleState?.phase === 'finished' || next?.battleState?.round > lastRound;
-      }, 5_000, 'the next battle round to be saved');
-      const next = await page.evaluate(() => JSON.parse(
-        localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
-      ));
+      }, 5_000, 'the next tactical battle round to be saved');
+      const next = await readSave();
       lastRound = next.battleState.round;
     }
-
-    const finishedSave = await page.evaluate(() => JSON.parse(
-      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
-    ));
-    assert.equal(finishedSave.stage, 'battle', 'a finished battle remains in the battle campaign stage');
-    assert.equal(finishedSave.battleState.phase, 'finished', 'the battle must reach a terminal state');
-    assert.ok(['victory', 'defeat', 'draw'].includes(finishedSave.battleState.outcome), 'the engine must choose a valid outcome');
+    const finished = await readSave();
+    assert.equal(finished.battleState.phase, 'finished', 'battle must eventually reach a terminal result');
     await page.locator('.tk-battle-result').waitFor({ timeout: 5_000 });
-    const resultText = await page.locator('.tk-battle-result').innerText();
-    assert.match(resultText, /Victory|Defeat|Draw/, 'the UI must render the terminal battle result');
-    assert.match(resultText, /Your remaining troops:.*Enemy remaining troops:/, 'the result must show remaining troop totals');
-    console.log(`PASS — M2-B battle result UI: ${finishedSave.battleState.outcome} after round ${finishedSave.battleState.round}`);
+    assert.match(await page.locator('.tk-battle-result').innerText(), /Victory|Defeat|Draw/);
 
     await page.getByRole('button', { name: 'Restart battle' }).click();
     await page.locator('.tk-begin-battle').waitFor({ timeout: 5_000 });
-    const resetBriefing = await page.evaluate(() => JSON.parse(
-      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
-    ));
-    assert.equal(resetBriefing.stage, 'battle-entry', 'restart battle must return to the battle briefing');
-    assert.equal(resetBriefing.battleState, null, 'restart battle must clear the completed tactical state');
-    assert.equal(resetBriefing.selectedChoiceId, 'swear_oath', 'restart battle must preserve the campaign choice');
-
+    const resetBriefing = await readSave();
+    assert.equal(resetBriefing.stage, 'battle-entry');
+    assert.equal(resetBriefing.battleState, null);
+    assert.equal(resetBriefing.selectedChoiceId, 'swear_oath');
     await page.locator('.tk-begin-battle').click();
+    await page.locator('.tk-deployment-panel').waitFor();
+    assert.equal((await readSave()).stage, 'deployment', 'restart must return to deployment preparation');
+    await page.locator('.tk-start-deployed-battle').click();
     await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 1' }).waitFor();
-    const restartedBattle = await page.evaluate(() => JSON.parse(
-      localStorage.getItem('ageofai:three-kingdoms:campaign:v1') || 'null',
-    ));
-    assert.equal(restartedBattle.stage, 'battle', 'beginning again must restore the tactical battle stage');
-    assert.equal(restartedBattle.battleState.round, 1, 'the new tactical battle must start at round one');
-    assert.equal(restartedBattle.battleState.phase, 'ready', 'the new tactical battle must be ready');
-    assert.equal(restartedBattle.battleState.log.length, 1, 'the new battle must start with a fresh log');
-    console.log('PASS — M2-B restart battle returns to briefing and starts a fresh encounter');
+    const restarted = await readSave();
+    assert.equal(restarted.stage, 'battle');
+    assert.equal(restarted.battleState.round, 1);
+    assert.equal(restarted.battleState.phase, 'ready');
+    assert.ok(restarted.battleState.log.some((entry) => entry.type === 'deployment_locked'));
+    console.log('PASS — M2-C restart resets tactical encounter, retains campaign choice and starts a fresh deployment');
+
+    assert.equal((await readSave()).name, undefined);
+    assert.equal(await page.evaluate(() => localStorage.getItem('ageofai:name')), playerName);
+    assert.equal(await page.evaluate(() => localStorage.getItem('ageofai:settings')), settingsValue);
     await page.locator('.tk-back').click();
     await page.locator('.entry-login input').waitFor();
-    assert.equal(browserErrors.length, 0, 'M2-B battle UI must not raise browser runtime errors');
-    console.log('PASS — M2-B battle UI: 3v3 setup, formation, Attack/Scheme/Wait, round resolution, battle log, save and refresh');
+    assert.equal(browserErrors.length, 0, 'M2-C tactical browser flow must not raise runtime errors');
+    console.log('PASS — M2-C tactical UI: deployment, four doctrines, all three general skills, save/reload, battle result and restart');
   } finally {
     await context.close();
   }
