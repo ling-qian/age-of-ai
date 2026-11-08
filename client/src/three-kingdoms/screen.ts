@@ -12,6 +12,8 @@ import {
   chooseEnemyOrders,
   compareIdsByCodePoint,
   createBattle,
+  getValidAttackTargets,
+  isValidAttackTarget,
   isValidSkillTarget,
   resolveRound,
   type BattleConfig,
@@ -58,13 +60,14 @@ function livingUnits(state: BattleState, side: 'player' | 'enemy'): BattleUnit[]
 }
 
 function defaultPlayerOrders(state: BattleState): UnitOrder[] {
-  const enemies = livingUnits(state, 'enemy').sort((a, b) =>
-    a.troops - b.troops || compareIdsByCodePoint(a.id, b.id),
-  );
-  const target = enemies[0];
-  return livingUnits(state, 'player').map((unit) => target
-    ? { unitId: unit.id, type: 'attack', targetId: target.id }
-    : { unitId: unit.id, type: 'wait' });
+  return livingUnits(state, 'player').map((unit) => {
+    const targets = getValidAttackTargets(state, unit.id).sort((a, b) =>
+      a.troops - b.troops || compareIdsByCodePoint(a.id, b.id),
+    );
+    return targets[0]
+      ? { unitId: unit.id, type: 'attack', targetId: targets[0].id }
+      : { unitId: unit.id, type: 'wait' };
+  });
 }
 
 function restorePlayerOrders(state: BattleState, raw: unknown): UnitOrder[] {
@@ -100,7 +103,9 @@ function restorePlayerOrders(state: BattleState, raw: unknown): UnitOrder[] {
     if ((candidate.type !== 'attack' && candidate.type !== 'scheme')
       || typeof candidate.targetId !== 'string'
       || !enemyIds.has(candidate.targetId)) return fallback;
-    if (!actor || (candidate.type === 'scheme' && actor.schemeUsed)) return fallback;
+    const target = state.units.find((unit) => unit.id === candidate.targetId);
+    if (!actor || !target || (candidate.type === 'scheme' && actor.schemeUsed)) return fallback;
+    if (candidate.type === 'attack' && !isValidAttackTarget(state, actor, target)) return fallback;
     return {
       unitId: fallback.unitId,
       type: candidate.type,
@@ -129,13 +134,24 @@ function unitById(state: BattleState, id: string): BattleUnit | undefined {
   return state.units.find((unit) => unit.id === id);
 }
 
+function formationName(formation: Formation): string {
+  switch (formation) {
+    case 'arrow': return 'Arrow';
+    case 'square': return 'Square';
+    case 'wedge': return 'Wedge';
+    case 'turtle': return 'Turtle';
+  }
+}
+
 function describeBattleLog(state: BattleState, entry: BattleLogEntry): string {
   const name = (id: string): string => unitById(state, id)?.name ?? id;
   switch (entry.type) {
     case 'battle_started':
       return `Battle begins: ${entry.playerUnitIds.length} vanguard units face ${entry.enemyUnitIds.length} Yellow Turban raiders.`;
+    case 'deployment_changed':
+      return `${entry.side === 'player' ? 'Your army' : 'The raiders'} redeploy: ${entry.assignments.map((item) => `${name(item.unitId)} to ${item.slot}`).join(', ')}.`;
     case 'formation_selected':
-      return `${entry.side === 'player' ? 'Your army' : 'The raiders'} adopt ${entry.formation === 'arrow' ? 'Arrow' : 'Square'} formation.`;
+      return `${entry.side === 'player' ? 'Your army' : 'The raiders'} adopt ${formationName(entry.formation)} formation.`;
     case 'unit_attacked':
       return `${name(entry.attackerId)} attacks ${name(entry.targetId)} — ${entry.hit ? 'hit' : 'miss'} (chance ${entry.hitChance}%, roll ${entry.roll}).`;
     case 'troops_lost':
@@ -163,6 +179,7 @@ function createFirstBattleConfig(): BattleConfig {
       {
         id: 'player-liu-bei',
         generalId: 'liu-bei',
+        slot: 'front-center',
         skillId: 'liu-bei-rende',
         name: 'Liu Bei',
         unitClass: 'infantry',
@@ -173,6 +190,7 @@ function createFirstBattleConfig(): BattleConfig {
       {
         id: 'player-guan-yu',
         generalId: 'guan-yu',
+        slot: 'front-left',
         skillId: 'guan-yu-qinglong-strike',
         name: 'Guan Yu',
         unitClass: 'cavalry',
@@ -183,6 +201,7 @@ function createFirstBattleConfig(): BattleConfig {
       {
         id: 'player-zhang-fei',
         generalId: 'zhang-fei',
+        slot: 'front-right',
         skillId: 'zhang-fei-thunderous-roar',
         name: 'Zhang Fei',
         unitClass: 'infantry',
@@ -195,6 +214,7 @@ function createFirstBattleConfig(): BattleConfig {
       {
         id: 'enemy-raider-captain',
         generalId: 'raider-captain',
+        slot: 'front-center',
         name: 'Raider Captain',
         unitClass: 'infantry',
         stats: { martial: 64, intelligence: 42, leadership: 62 },
@@ -204,6 +224,7 @@ function createFirstBattleConfig(): BattleConfig {
       {
         id: 'enemy-rebel-archer',
         generalId: 'rebel-archer',
+        slot: 'rear-center',
         name: 'Rebel Archer',
         unitClass: 'archer',
         stats: { martial: 60, intelligence: 54, leadership: 55 },
@@ -213,6 +234,7 @@ function createFirstBattleConfig(): BattleConfig {
       {
         id: 'enemy-rebel-spearman',
         generalId: 'rebel-spearman',
+        slot: 'front-left',
         name: 'Rebel Spearman',
         unitClass: 'infantry',
         stats: { martial: 58, intelligence: 35, leadership: 51 },
@@ -504,7 +526,7 @@ export class ThreeKingdomsScreen {
     });
     formationLabel.appendChild(formationSelect);
     formationRow.appendChild(formationLabel);
-    formationRow.appendChild(el('span', 'tk-enemy-formation', `Enemy formation: ${state.formations.enemy === 'arrow' ? 'Arrow' : 'Square'}`));
+    formationRow.appendChild(el('span', 'tk-enemy-formation', `Enemy formation: ${formationName(state.formations.enemy)}`));
     panel.appendChild(formationRow);
 
     const battlefield = el('div', 'tk-battlefield');
@@ -629,6 +651,14 @@ export class ThreeKingdomsScreen {
     });
     targetSelect.addEventListener('change', () => {
       if (typeSelect.value === 'attack' || typeSelect.value === 'scheme') {
+        const selected = state.units.find((candidate) => candidate.id === targetSelect.value);
+        if (typeSelect.value === 'attack' && (!selected || !isValidAttackTarget(state, unit, selected))) {
+          const fallback = getValidAttackTargets(state, unit.id)[0];
+          this.setPlayerOrder(fallback
+            ? { unitId: unit.id, type: 'attack', targetId: fallback.id }
+            : { unitId: unit.id, type: 'wait' });
+          return;
+        }
         this.setPlayerOrder({ unitId: unit.id, type: typeSelect.value, targetId: targetSelect.value });
       }
     });
