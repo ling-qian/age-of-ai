@@ -51,6 +51,9 @@ jobs:
       - name: M2-C general skill execution
         run: npx tsx scripts/three_kingdoms_skill_execution_test.ts
 
+      - name: M2-C deployment, class and formation rules
+        run: npx tsx scripts/three_kingdoms_deployment_test.ts
+
       - name: Install temporary Playwright runner
         run: npm install --no-save --package-lock=false playwright
 
