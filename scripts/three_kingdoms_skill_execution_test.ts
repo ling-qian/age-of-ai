@@ -221,7 +221,7 @@ test('cooldown decreases once at each completed round and the final use cannot b
 
 test('a skill target defeated before the caster acts is skipped without consuming the skill', () => {
   let state = makeBattle();
-  state = setLeadership(state, 'p-liu', 120);
+  state = setLeadership(state, 'p-liu', 100);
   state = setLeadership(state, 'p-guan', 90);
   state = setTroops(state, 'e-captain', 1);
   const hitSeed = findSeed(true, calculateHitChance(state.units.find((unit) => unit.id === 'p-liu')!, state.units.find((unit) => unit.id === 'e-captain')!));
@@ -239,7 +239,7 @@ test('duplicate commands cannot grant a general a second action in the same roun
   const duplicate = ordersWith(state, {
     'p-liu': { unitId: 'p-liu', type: 'skill', targetId: 'p-guan' },
   });
-  duplicate.push({ unitId: 'p-liu', type: 'wait' });
+  duplicate[2] = { unitId: 'p-liu', type: 'wait' };
   assert.throws(() => resolveRound(state, {
     formations: { player: 'arrow', enemy: 'arrow' },
     orders: duplicate,
