@@ -570,8 +570,9 @@ async function testThreeKingdomsBattle(browser) {
     await page.locator('.tk-resolve-round').click();
     await page.locator('.tk-battle-panel .tk-eyebrow').filter({ hasText: 'ROUND 3' }).waitFor({ timeout: 10_000 });
     battleSave = await readSave();
-    assert.ok(battleSave.battleState.units.find((unit) => unit.id === 'player-guan-yu').troops > guan.troops, 'Liu Bei Rende must restore Guan Yu troops in the browser battle');
-    assert.ok(battleSave.battleState.log.some((entry) => entry.type === 'general_skill_used' && entry.skillId === 'liu-bei-rende'), 'Liu Bei skill must be logged');
+    const rendeRestore = battleSave.battleState.log.find((entry) => entry.type === 'troops_restored' && entry.targetId === 'player-guan-yu' && entry.round === 2);
+    assert.ok(rendeRestore && rendeRestore.amount > 0, 'Liu Bei Rende must create a positive structured troop-restoration event for Guan Yu');
+    assert.ok(battleSave.battleState.log.some((entry) => entry.type === 'general_skill_used' && entry.skillId === 'liu-bei-rende' && entry.targetId === 'player-guan-yu'), 'Liu Bei skill must be logged against the selected ally');
     assert.equal(battleSave.battleState.units.find((unit) => unit.id === 'player-liu-bei').skillState.usesRemaining, 1);
     assert.equal(battleSave.battleState.units.find((unit) => unit.id === 'player-liu-bei').skillState.cooldownRemaining, 1);
     console.log('PASS — M2-C Liu Bei Rende heals a wounded ally through the live UI');
