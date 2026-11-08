@@ -11,6 +11,8 @@ import {
   chooseEnemyOrders,
   compareIdsByCodePoint,
   createBattle,
+  getGeneralSkillById,
+  isValidSkillTarget,
   resolveRound,
   type BattleConfig,
   type BattleLogEntry,
@@ -79,10 +81,25 @@ function restorePlayerOrders(state: BattleState, raw: unknown): UnitOrder[] {
     const candidate = saved.get(fallback.unitId);
     if (!isRecord(candidate)) return fallback;
     if (candidate.type === 'wait') return { unitId: fallback.unitId, type: 'wait' };
+    const actor = state.units.find((unit) => unit.id === fallback.unitId);
+    if (candidate.type === 'skill') {
+      if (!actor?.skillId || !actor.skillState || actor.skillState.cooldownRemaining > 0 || actor.skillState.usesRemaining <= 0) return fallback;
+      const definition = getGeneralSkillById(actor.skillId);
+      if (!definition || definition.ownerGeneralId !== actor.generalId) return fallback;
+      if (definition.target === 'enemy_all') {
+        return candidate.targetId === undefined && livingUnits(state, 'enemy').length > 0
+          ? { unitId: fallback.unitId, type: 'skill' }
+          : fallback;
+      }
+      if (typeof candidate.targetId !== 'string') return fallback;
+      const target = state.units.find((unit) => unit.id === candidate.targetId);
+      return target && isValidSkillTarget(actor, target, definition)
+        ? { unitId: fallback.unitId, type: 'skill', targetId: target.id }
+        : fallback;
+    }
     if ((candidate.type !== 'attack' && candidate.type !== 'scheme')
       || typeof candidate.targetId !== 'string'
       || !enemyIds.has(candidate.targetId)) return fallback;
-    const actor = state.units.find((unit) => unit.id === fallback.unitId);
     if (!actor || (candidate.type === 'scheme' && actor.schemeUsed)) return fallback;
     return {
       unitId: fallback.unitId,
@@ -125,12 +142,16 @@ function describeBattleLog(state: BattleState, entry: BattleLogEntry): string {
       return `${name(entry.targetId)} loses ${entry.casualties} troops; ${entry.remainingTroops} remain.`;
     case 'scheme_attempted':
       return `${name(entry.casterId)} uses a scheme against ${name(entry.targetId)} — ${entry.success ? 'the target is suppressed' : 'the scheme fails'} (chance ${entry.successChance}%, roll ${entry.roll}).`;
+    case 'general_skill_used':
+      return `${name(entry.casterId)} uses ${entry.skillId} on ${name(entry.targetId)} — ${entry.success ? 'resolved' : 'missed'}.`;
+    case 'troops_restored':
+      return `${name(entry.targetId)} regains ${entry.amount} troops; ${entry.remainingTroops} remain.`;
     case 'unit_guarded':
       return `${name(entry.unitId)} takes a guarded stance.`;
     case 'unit_defeated':
       return `${name(entry.unitId)} is defeated.`;
     case 'order_skipped':
-      return `${name(entry.unitId)} cannot act: ${entry.reason === 'unit_defeated' ? 'the unit has been defeated' : 'the target has fallen'}.`;
+      return `${name(entry.unitId)} cannot act: ${entry.reason === 'unit_defeated' ? 'the unit has been defeated' : entry.reason === 'target_invalid' ? 'the selected target is no longer valid' : 'the target has fallen'}.`;
     case 'battle_finished':
       return `Battle ends — ${entry.outcome}. Remaining troops: your army ${entry.playerTroops}, raiders ${entry.enemyTroops}.`;
   }
