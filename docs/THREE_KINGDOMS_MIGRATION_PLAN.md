@@ -1,6 +1,6 @@
 # Three Kingdoms MVP Migration Plan
 
-Status: M1 is **ACCEPTED / FROZEN** at `107c62db98baa19267a4e8d131bc5443f35468fc` (preserved by `m1-freeze/107c62d`). M2-A and M2-B are **COMPLETE / CI VERIFIED**; M2-B candidate `cfb7614b6dae43defb68afb8631bbba341cb0612` passed [CI run 42427498617](https://github.com/ling-qian/age-of-ai/actions/runs/42427498617). Before campaign-map expansion, **M2-C is IN PROGRESS**: first deliver versioned campaign-save migration and the general skill data model, then skill execution and deployment rules.
+Status: M1 is **ACCEPTED / FROZEN** at `107c62db98baa19267a4e8d131bc5443f35468fc` (preserved by `m1-freeze/107c62d`). M2-A and M2-B are **COMPLETE / CI VERIFIED**. M2-C (versioned save migration, general skills, 3×3 deployment, class/formation rules, tactical UI, and full browser acceptance) is **COMPLETE / ACCEPTED / CI VERIFIED** on candidate `1ae46c7e8f3c9d8df990629635a69304871b863f`, [CI run 42436167559](https://github.com/ling-qian/age-of-ai/actions/runs/42436167559). M3 is the next eligible milestone but has **NOT STARTED**.
 
 ## Safety rules
 
@@ -95,7 +95,7 @@ Implemented on candidate `cfb7614b6dae43defb68afb8631bbba341cb0612`:
 
 M2-B is a client-only single-player tactical battle integration. It does not add server routes, multiplayer messages, or changes to the original RTS.
 
-### M2-C — General-specific skills and tactical deployment formations (**PHASE 3 RULES COMPLETE — PHASE 4 UI NEXT**)
+### M2-C — General-specific skills and tactical deployment formations (**COMPLETE / ACCEPTED / CI VERIFIED**)
 
 The current M2-B build is a playable first battle, not the full tactical system. Its generic Attack/Scheme/Wait orders and army-wide Arrow/Square stance do not satisfy the requirements for unique general skills and detailed deployment.
 
@@ -122,7 +122,9 @@ Phase 3 rules are complete on `feature/m2c-deployment-rules`. Campaign/battle sa
 
 Candidate `987716622db7b9e31709a2b9e8cfa54534d04494` passed [GitHub Actions run 42435222033](https://github.com/ling-qian/age-of-ai/actions/runs/42435222033): 28 M2-A, 7 save-migration, 14 skill-execution, and 16 deployment/class/formation tests, plus build/typecheck, original RTS smoke, and existing browser regression.
 
-**Phase 4 is next:** implement the 3×3 deployment board, selectable four-doctrine control, each general's skill command and valid-target controls, then full browser acceptance for placement, skill effects/cooldowns, save/reload, battle result, restart, and original RTS regression. M3 remains blocked.
+**Phase 4 acceptance:** candidate `1ae46c7e8f3c9d8df990629635a69304871b863f` passed [GitHub Actions run 42436167559](https://github.com/ling-qian/age-of-ai/actions/runs/42436167559). The browser covered v1→v3 migration, player/enemy deployment boards, slot reassignment, four doctrines, live melee screening and archer rear-reach previews, Guan Yu/Zhang Fei skill actions, Liu Bei Rende healing, cooldown/use persistence, refresh restoration, battle outcome, restart, and the original RTS two-browser regression. The diff audit confirms no `server/`, `shared/`, original RTS/network paths changed.
+
+M2-C is accepted. M3 campaign map and recruitment are eligible next but remain unimplemented until separately started.
 
 Only after M2-C tests pass should M3 campaign-map and recruitment work begin.
 
