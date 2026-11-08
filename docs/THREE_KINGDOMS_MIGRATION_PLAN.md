@@ -1,6 +1,6 @@
 # Three Kingdoms MVP Migration Plan
 
-Status: M1 is **ACCEPTED / FROZEN** at `107c62db98baa19267a4e8d131bc5443f35468fc` (preserved by `m1-freeze/107c62d`). M2-A and M2-B are **COMPLETE / CI VERIFIED**; M2-B candidate `cfb7614b6dae43defb68afb8631bbba341cb0612` passed [CI run 42427498617](https://github.com/ling-qian/age-of-ai/actions/runs/42427498617). Before campaign-map expansion, the next milestone is **M2-C: general-specific skills and tactical deployment formations**.
+Status: M1 is **ACCEPTED / FROZEN** at `107c62db98baa19267a4e8d131bc5443f35468fc` (preserved by `m1-freeze/107c62d`). M2-A and M2-B are **COMPLETE / CI VERIFIED**; M2-B candidate `cfb7614b6dae43defb68afb8631bbba341cb0612` passed [CI run 42427498617](https://github.com/ling-qian/age-of-ai/actions/runs/42427498617). Before campaign-map expansion, **M2-C is IN PROGRESS**: first deliver versioned campaign-save migration and the general skill data model, then skill execution and deployment rules.
 
 ## Safety rules
 
@@ -95,7 +95,7 @@ Implemented on candidate `cfb7614b6dae43defb68afb8631bbba341cb0612`:
 
 M2-B is a client-only single-player tactical battle integration. It does not add server routes, multiplayer messages, or changes to the original RTS.
 
-### M2-C — General-specific skills and tactical deployment formations (**NEXT — SPECIFICATION DRAFT**)
+### M2-C — General-specific skills and tactical deployment formations (**IN PROGRESS — SAVE V2 + SKILL DATA MODEL**)
 
 The current M2-B build is a playable first battle, not the full tactical system. Its generic Attack/Scheme/Wait orders and army-wide Arrow/Square stance do not satisfy the requirements for unique general skills and detailed deployment.
 
@@ -111,6 +111,8 @@ Required before implementation:
 - Add rule tests and real-browser tests for skill use, cooldowns, formation placement, target availability, round resolution, reload restoration, and restarting the encounter.
 - Extend the campaign-save schema with a safe migration from the current save. Never overwrite the existing save with the test fixture on browser refresh. Do not touch RTS identity/settings keys.
 - Preserve the M1 freeze branch. No changes to `server/`, `shared/`, original RTS simulation, lobby, networking, or WebSocket protocol.
+
+Phase 1 implementation is on `feature/m2c-save-skill-model`. Campaign saves retain the existing localStorage key while moving the JSON schema and battle-state schema to version 2. Valid v1 saves migrate; invalid/unknown saves are read-only until explicit reset. The skill registry currently covers Liu Bei, Guan Yu, and Zhang Fei with versioned data-only definitions. This is not yet a full M2-C acceptance: skill execution, cooldown resolution, deployment, positional targeting, and browser acceptance remain outstanding.
 
 Only after M2-C tests pass should M3 campaign-map and recruitment work begin.
 
