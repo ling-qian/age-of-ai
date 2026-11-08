@@ -50,7 +50,11 @@ const currentBattle = createBattle(config, 0x01842026);
 
 function legacyBattleV1() {
   const units = currentBattle.units.map((unit) => {
-    const { skillId: _skillId, skillState: _skillState, ...legacyUnit } = unit;
+    const legacyUnit = { ...unit } as Record<string, unknown>;
+    delete legacyUnit.skillId;
+    delete legacyUnit.skillState;
+    delete legacyUnit.slot;
+    delete legacyUnit.suppressedUntilRound;
     return legacyUnit;
   });
   return { ...currentBattle, version: 1, units };
@@ -83,7 +87,7 @@ test('starter roster has three unique, owner-bound personal skill definitions', 
 });
 
 test('new battle initializes one serializable skill state per starter general', () => {
-  assert.equal(currentBattle.version, 2);
+  assert.equal(currentBattle.version, 3);
   const expected = [
     ['liu-bei', 'liu-bei-rende', 2],
     ['guan-yu', 'guan-yu-qinglong-strike', 2],
@@ -127,12 +131,45 @@ test('version-1 campaign and battle saves migrate without losing battle progress
   ]);
   const migratedBattle = loaded.save.battleState;
   assert.ok(migratedBattle);
-  assert.equal(migratedBattle.version, 2);
+  assert.equal(migratedBattle.version, 3);
   assert.equal(migratedBattle.round, oldBattle.round);
   assert.equal(migratedBattle.rngState, oldBattle.rngState);
   assert.deepEqual(migratedBattle.log, oldBattle.log);
   assert.deepEqual(migratedBattle.units.map((unit) => unit.troops), oldBattle.units.map((unit: { troops: number }) => unit.troops));
   assert.equal(migratedBattle.units.find((unit) => unit.generalId === 'liu-bei')?.skillState?.usesRemaining, 2);
+  assert.deepEqual(migratedBattle.units.filter((unit) => unit.side === 'player').map((unit) => unit.slot), ['front-center', 'front-left', 'front-right']);
+});
+
+test('version-2 campaign and battle saves migrate to v3 and assign default deployment slots', () => {
+  const oldUnits = currentBattle.units.map((unit) => {
+    const oldUnit = { ...unit } as Record<string, unknown>;
+    delete oldUnit.slot;
+    return oldUnit;
+  });
+  const battleV2 = { ...currentBattle, version: 2, units: oldUnits };
+  const saveV2 = {
+    version: 2,
+    eventFlags: ['taoyuan_oath_resolved'],
+    resources: { morale: 4, supplies: 4, bond: 2, allies: 0 },
+    selectedChoiceId: 'swear_oath',
+    stage: 'battle',
+    battleState: battleV2,
+    playerFormation: 'wedge',
+    playerOrders: [{ unitId: 'player-liu-bei', type: 'wait' }],
+  };
+  const loaded = loadCampaignSave(JSON.stringify(saveV2));
+  assert.equal(loaded.status, 'migrated');
+  assert.equal(loaded.save.version, 3);
+  assert.equal(loaded.save.playerFormation, 'wedge');
+  assert.equal(loaded.save.battleState?.version, 3);
+  assert.deepEqual(
+    loaded.save.battleState?.units.filter((unit) => unit.side === 'player').map((unit) => unit.slot),
+    ['front-center', 'front-left', 'front-right'],
+  );
+  assert.equal(
+    loaded.save.battleState?.units.find((unit) => unit.generalId === 'liu-bei')?.skillState?.usesRemaining,
+    2,
+  );
 });
 
 test('version-1 oath/briefing save migrates without inventing a battle', () => {
@@ -151,7 +188,7 @@ test('version-2 skill cooldown and remaining uses are restored exactly', () => {
       : unit),
   };
   const save: CampaignSave = {
-    version: 2,
+    version: CAMPAIGN_SAVE_VERSION,
     eventFlags: ['taoyuan_oath_resolved'],
     resources: { morale: 4, supplies: 3, bond: 1, allies: 0 },
     selectedChoiceId: 'swear_oath',
