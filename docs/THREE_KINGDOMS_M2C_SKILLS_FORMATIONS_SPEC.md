@@ -1,6 +1,6 @@
 # M2-C — General Skills and Tactical Deployment Formations
 
-**Status: PHASE 3 RULES COMPLETE / PHASE 4 UI + BROWSER INTEGRATION IN PROGRESS**
+**Status: M2-C COMPLETE / ACCEPTED — ALL FOUR PHASES CI VERIFIED**
 
 ## 1. Purpose and milestone order
 
@@ -270,7 +270,7 @@ Forbidden:
 - Valid skill use consumes one use and starts cooldown even if the damage skill misses. Invalid orders are rejected before consumption; if a selected target is defeated or becomes invalid before the caster acts, the order is skipped without consuming the skill.
 - Cooldowns tick once at the end of each completed round and clamp at zero. Suppression has a saved expiry round and is cleared after its defined round or when its next outgoing attack consumes it.
 - Enemy AI can select ready personal skills deterministically and follows the same ownership, target, cooldown, and use rules.
-- The provisional `enemy_frontline` target rule currently admits infantry/cavalry and excludes archers. Phase 3 will replace this pre-deployment class proxy with the actual 3×3 front-line positions.
+- At initial Phase 2 delivery, `enemy_frontline` used a temporary class proxy. Phase 3 replaced it with actual front-row deployment slots; Zhang Fei now targets the deployed enemy frontline, including any valid frontline unit class.
 - Added `scripts/three_kingdoms_skill_execution_test.ts` and a CI step. It covers skill effects, target rejection, ownership, use limits, cooldown, skipped targets, duplicate orders, AI selection, suppression reduction, and save/load restoration (14/14 pass).
 - Verified on candidate `edaae9c69918f178b9bd136a3ea1a487c7186827` in [GitHub Actions run 42434473539](https://github.com/ling-qian/age-of-ai/actions/runs/42434473539): typecheck, production build, original RTS WebSocket smoke, M2-A 28/28, save/skill model 7/7, skill execution 14/14, and the current Playwright regression all passed.
 - **Still outstanding:** 3×3 deployment positions, frontline screening, positional target validation, richer unit-class combat roles, additional army formations, deployment UI, visible skill controls, and the final M2-C browser acceptance flow.
@@ -288,7 +288,18 @@ Forbidden:
 - Candidate `987716622db7b9e31709a2b9e8cfa54534d04494` passed [GitHub Actions run 42435222033](https://github.com/ling-qian/age-of-ai/actions/runs/42435222033): typecheck, production build, RTS smoke, M2-A 28/28, save migration 7/7, skill execution 14/14, deployment/class/formation 16/16, and existing browser regression.
 - **Still outstanding:** player-facing deployment board, four-doctrine selector, visible skill controls/targets, and full Phase 4 browser acceptance.
 
-### Phase 4 — Deployment/skill UI and full browser acceptance (NEXT)
+### Phase 4 — Deployment/skill UI and full browser acceptance (COMPLETE / CI VERIFIED)
+
+- Replaced the direct briefing-to-battle transition with a saved deployment stage. The player can rearrange each general across the 3×3 grid before locking the line and starting combat.
+- Added player and enemy deployment boards, occupied/empty cells, per-general slot selectors, class/troop/skill details, and a separate pre-battle doctrine selector.
+- Added all four army doctrine choices (Arrow, Square, Wedge, Turtle) to both deployment preparation and the live battle panel. Doctrine is saved separately from unit position.
+- Added personal-skill controls on each general's battle card, with owner-specific skill name/description, valid target options, cooldown and remaining-use display. The engine continues to validate all orders independently of the UI.
+- Added enemy legal-target reach previews. Browser assertions verify that Liu Bei's infantry attack control cannot select the screened rear Rebel Archer, while the Rebel Archer's ranged reach includes Zhang Fei in the rear row.
+- The browser regression now exercises v1→v3 campaign migration, unique deployment placement, pre-battle doctrine selection, refresh restoration of deployment, combat lock, Guan Yu's and Zhang Fei's skills, Liu Bei's Rende healing of a wounded ally, skill cooldown/use persistence, deployment/doctrine/log restoration after reload, terminal battle result, restart through deployment, and the original RTS multiplayer flow.
+- Evidence on candidate `1ae46c7e8f3c9d8df990629635a69304871b863f`: [GitHub Actions run 42436167559](https://github.com/ling-qian/age-of-ai/actions/runs/42436167559) passed the full workflow: `npm ci`, typecheck, production build, original RTS WebSocket smoke, M2-A 28/28, save migration/model 9/9, skill execution 14/14, deployment/class/doctrine 16/16, Playwright tactical browser regression, and original RTS two-browser regression.
+- Source diff audit against `feature/m2c-deployment-rules` contains only `.github/workflows/three-kingdoms-m1-validation.yml`, `client/src/style.css`, `client/src/three-kingdoms/battle-engine.ts`, `client/src/three-kingdoms/campaign-save.ts`, `client/src/three-kingdoms/screen.ts`, and `scripts/m1_browser_regression.mjs`. No `server/`, `shared/`, original RTS simulation, lobby, or WebSocket files changed.
+
+
 ## 10. M2-C completion gate
 
 M2-C is complete only when:
@@ -298,4 +309,4 @@ M2-C is complete only when:
 - A source diff audit confirms the RTS/server/network boundary remains unchanged.
 - The acceptance record includes the exact commit SHA, CI link, and browser evidence.
 
-Until all gates pass, do not start M3 campaign-map work.
+All M2-C gates passed on candidate `1ae46c7e8f3c9d8df990629635a69304871b863f` in [GitHub Actions run 42436167559](https://github.com/ling-qian/age-of-ai/actions/runs/42436167559). M2-C is **COMPLETE / ACCEPTED / CI VERIFIED**. M3 campaign-map and recruitment work is now eligible as the next milestone, but has not been started.
