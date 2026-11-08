@@ -347,9 +347,10 @@ export class ThreeKingdomsScreen {
     if (type === 'scheme' && unit.schemeUsed) return;
     const state = this.save.battleState;
     if (!state) return;
-    const validTarget = livingUnits(state, 'enemy').some((enemy) => enemy.id === targetId)
+    const candidates = type === 'attack' ? getValidAttackTargets(state, unit.id) : livingUnits(state, 'enemy');
+    const validTarget = candidates.some((enemy) => enemy.id === targetId)
       ? targetId
-      : livingUnits(state, 'enemy').sort((a, b) => a.troops - b.troops || a.id.localeCompare(b.id))[0]?.id;
+      : candidates.sort((a, b) => a.troops - b.troops || compareIdsByCodePoint(a.id, b.id))[0]?.id;
     if (!validTarget) {
       this.setPlayerOrder({ unitId: unit.id, type: 'wait' });
       return;
