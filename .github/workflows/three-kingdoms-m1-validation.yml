@@ -46,6 +46,9 @@ jobs:
       - name: M2-C save migration and general skill data
         run: npx tsx scripts/three_kingdoms_campaign_save_test.ts
 
+      - name: M2-C general skill execution
+        run: npx tsx scripts/three_kingdoms_skill_execution_test.ts
+
       - name: Install temporary Playwright runner
         run: npm install --no-save --package-lock=false playwright
 
