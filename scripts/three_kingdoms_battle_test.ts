@@ -156,11 +156,11 @@ function expectedCasualties(
   );
 }
 
-test('createBattle builds a fresh serializable 3v3 state and uses the documented zero-seed fallback', () => {
+test('createBattle builds a fresh serializable v2 3v3 state and uses the documented zero-seed fallback', () => {
   const input = config();
   const before = JSON.stringify(input);
   const state = createBattle(input, 0);
-  assert.equal(state.version, 1);
+  assert.equal(state.version, 2);
   assert.equal(state.round, 1);
   assert.equal(state.phase, 'ready');
   assert.equal(state.rngState, BATTLE_RULES.seedFallback);
