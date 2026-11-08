@@ -190,6 +190,16 @@ test('a personal skill cannot be used by a unit that does not own that skill', (
   }), /does not own skill/);
 });
 
+test('a registered starter general cannot be created without its personal skill ID', () => {
+  const invalid: BattleConfig = {
+    ...config,
+    playerUnits: config.playerUnits.map((unit) => unit.generalId === 'liu-bei'
+      ? { ...unit, skillId: null }
+      : unit),
+  };
+  assert.throws(() => createBattle(invalid, 123), /must declare its registered personal skill/);
+});
+
 test('a general without a skill cannot submit a skill order', () => {
   const state = makeBattle();
   assert.throws(() => resolveWith(state, {
