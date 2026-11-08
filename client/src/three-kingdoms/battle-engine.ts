@@ -15,7 +15,34 @@ import {
 
 export type BattleSide = 'player' | 'enemy';
 export type UnitClass = 'infantry' | 'archer' | 'cavalry';
-export type Formation = 'arrow' | 'square';
+export type Formation = 'arrow' | 'square' | 'wedge' | 'turtle';
+export type DeploymentDepth = 'front' | 'middle' | 'rear';
+export type DeploymentLane = 'left' | 'center' | 'right';
+export type DeploymentSlot =
+  | 'front-left' | 'front-center' | 'front-right'
+  | 'middle-left' | 'middle-center' | 'middle-right'
+  | 'rear-left' | 'rear-center' | 'rear-right';
+export interface DeploymentAssignment { unitId: string; slot: DeploymentSlot; }
+
+export const DEPLOYMENT_SLOTS: readonly DeploymentSlot[] = [
+  'front-left', 'front-center', 'front-right',
+  'middle-left', 'middle-center', 'middle-right',
+  'rear-left', 'rear-center', 'rear-right',
+];
+
+const DEFAULT_DEPLOYMENT_SLOTS: readonly DeploymentSlot[] = [
+  'front-center', 'front-left', 'front-right',
+];
+
+const DEPLOYMENT_DEPTH_ORDER: Record<DeploymentDepth, number> = { front: 0, middle: 1, rear: 2 };
+
+export function getDeploymentDepth(slot: DeploymentSlot): DeploymentDepth {
+  return slot.split('-')[0] as DeploymentDepth;
+}
+
+export function getDeploymentLane(slot: DeploymentSlot): DeploymentLane {
+  return slot.split('-')[1] as DeploymentLane;
+}
 export type BattleOutcome = 'victory' | 'defeat' | 'draw';
 
 export interface GeneralStats {
@@ -34,6 +61,8 @@ export interface BattleUnitConfig {
   maxTroops: number;
   /** Set only when this unit is a named general with a registered personal skill. */
   skillId?: string | null;
+  /** Optional pre-battle slot; omitted configs receive deterministic front-row defaults. */
+  slot?: DeploymentSlot;
 }
 
 export interface BattleConfig {
@@ -42,6 +71,7 @@ export interface BattleConfig {
 }
 
 export interface BattleUnit extends BattleUnitConfig {
+  slot: DeploymentSlot;
   side: BattleSide;
   skillId: string | null;
   skillState: GeneralSkillState | null;
@@ -65,6 +95,7 @@ export interface RoundInput {
 
 export type BattleLogEntry =
   | { type: 'battle_started'; round: number; playerUnitIds: string[]; enemyUnitIds: string[] }
+  | { type: 'deployment_changed'; round: number; side: BattleSide; assignments: DeploymentAssignment[] }
   | { type: 'formation_selected'; round: number; side: BattleSide; formation: Formation }
   | { type: 'unit_attacked'; round: number; attackerId: string; targetId: string; hitChance: number; roll: number; hit: boolean }
   | { type: 'troops_lost'; round: number; targetId: string; casualties: number; remainingTroops: number }
@@ -77,7 +108,7 @@ export type BattleLogEntry =
   | { type: 'battle_finished'; round: number; outcome: BattleOutcome; playerTroops: number; enemyTroops: number };
 
 export interface BattleState {
-  version: 2;
+  version: 3;
   round: number;
   phase: 'ready' | 'finished';
   rngState: number;
@@ -104,6 +135,11 @@ export const BATTLE_RULES = {
   strengthTroopWeight: 0.5,
   arrowOutgoingMultiplier: 1.15,
   squareIncomingMultiplier: 0.8,
+  wedgeCavalryOutgoingMultiplier: 1.3,
+  wedgeOtherOutgoingMultiplier: 0.9,
+  turtleOutgoingMultiplier: 0.85,
+  turtleIncomingMultiplier: 0.75,
+  cavalryFlankMultiplier: 1.2,
   guardMultiplier: 0.7,
   suppressionMultiplier: 0.65,
   schemeBaseChance: 50,
@@ -153,7 +189,15 @@ function assertSide(value: unknown, label: string): asserts value is BattleSide 
 }
 
 function assertFormation(value: unknown, label: string): asserts value is Formation {
-  if (value !== 'arrow' && value !== 'square') fail(`${label} must be arrow or square`);
+  if (value !== 'arrow' && value !== 'square' && value !== 'wedge' && value !== 'turtle') {
+    fail(`${label} must be arrow, square, wedge, or turtle`);
+  }
+}
+
+function assertDeploymentSlot(value: unknown, label: string): asserts value is DeploymentSlot {
+  if (typeof value !== 'string' || !DEPLOYMENT_SLOTS.includes(value as DeploymentSlot)) {
+    fail(`${label} is not a valid 3x3 deployment slot`);
+  }
 }
 
 function assertUnitCore(value: unknown, label: string, allowZeroTroops: boolean): asserts value is BattleUnit {
@@ -161,6 +205,7 @@ function assertUnitCore(value: unknown, label: string, allowZeroTroops: boolean)
   assertNonEmptyString(value.id, `${label}.id`);
   assertNonEmptyString(value.generalId, `${label}.generalId`);
   assertNonEmptyString(value.name, `${label}.name`);
+  assertDeploymentSlot(value.slot, `${label}.slot`);
   assertSide(value.side, `${label}.side`);
   assertUnitClass(value.unitClass, `${label}.unitClass`);
   assertStats(value.stats, `${label}.stats`);
@@ -246,7 +291,7 @@ export function nextRandom(state: number): { value: number; state: number } {
 
 function assertBattleState(state: unknown, allowFinished: boolean): asserts state is BattleState {
   if (!isRecord(state)) fail('state must be an object');
-  if (state.version !== 2) fail('unsupported state version');
+  if (state.version !== 3) fail('unsupported state version');
   assertInteger(state.round, 1, BATTLE_RULES.maxRounds, 'state.round');
   if (state.phase !== 'ready' && state.phase !== 'finished') fail('state.phase is invalid');
   if (!allowFinished && state.phase !== 'ready') fail('battle is already finished');
@@ -259,10 +304,13 @@ function assertBattleState(state: unknown, allowFinished: boolean): asserts stat
   }
   const ids = new Set<string>();
   const sideCounts: Record<BattleSide, number> = { player: 0, enemy: 0 };
+  const occupiedSlots: Record<BattleSide, Set<DeploymentSlot>> = { player: new Set(), enemy: new Set() };
   for (const [index, candidate] of state.units.entries()) {
     assertUnitCore(candidate, `state.units[${index}]`, true);
     if (ids.has(candidate.id)) fail(`duplicate unit id: ${candidate.id}`);
     ids.add(candidate.id);
+    if (occupiedSlots[candidate.side].has(candidate.slot)) fail(`duplicate ${candidate.side} deployment slot ${candidate.slot}`);
+    occupiedSlots[candidate.side].add(candidate.slot);
     sideCounts[candidate.side]++;
   }
   if (sideCounts.player !== 3 || sideCounts.enemy !== 3) fail('state must contain three player and three enemy units');
@@ -287,7 +335,36 @@ export function isBattleState(value: unknown): value is BattleState {
  * Starter generals receive their one-time initial skill allowance; ordinary
  * troop units remain skill-less. This function must only run for version 1.
  */
-export function migrateBattleStateV1ToV2(value: unknown): BattleState {
+/**
+ * Upgrade a Phase-1 version-2 battle to version 3 by assigning deterministic
+ * default slots. Existing skills, cooldowns, formations, round, RNG, and log
+ * remain untouched.
+ */
+export function migrateBattleStateV2ToV3(value: unknown): BattleState {
+  if (!isRecord(value) || value.version !== 2 || !Array.isArray(value.units)) {
+    fail('only a version-2 battle state can be migrated to v3');
+  }
+  const sideIndexes: Record<BattleSide, number> = { player: 0, enemy: 0 };
+  const units = value.units.map((candidate, index) => {
+    if (!isRecord(candidate)) fail(`version-2 state.units[${index}] is invalid`);
+    assertSide(candidate.side, `version-2 state.units[${index}].side`);
+    const defaultSlot = DEFAULT_DEPLOYMENT_SLOTS[sideIndexes[candidate.side] % DEFAULT_DEPLOYMENT_SLOTS.length];
+    sideIndexes[candidate.side]++;
+    return {
+      ...candidate,
+      slot: candidate.slot ?? defaultSlot,
+      suppressedUntilRound: candidate.suppressed === true
+        ? (candidate.suppressedUntilRound ?? Number(value.round))
+        : null,
+    };
+  });
+  const migrated = { ...value, version: 3, units };
+  assertBattleState(migrated, true);
+  return migrated;
+}
+
+/** Upgrade an original v1 campaign battle directly to the current v3 format. */
+export function migrateBattleStateV1ToV3(value: unknown): BattleState {
   if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.units)) {
     fail('only a version-1 battle state can be migrated');
   }
@@ -303,9 +380,7 @@ export function migrateBattleStateV1ToV2(value: unknown): BattleState {
       suppressedUntilRound: candidate.suppressed === true ? Number(value.round) : null,
     };
   });
-  const migrated = { ...value, version: 2, units };
-  assertBattleState(migrated, true);
-  return migrated;
+  return migrateBattleStateV2ToV3({ ...value, version: 2, units });
 }
 
 function cloneState(state: BattleState): BattleState {
@@ -324,12 +399,15 @@ function cloneState(state: BattleState): BattleState {
       if (entry.type === 'battle_started') {
         return { ...entry, playerUnitIds: [...entry.playerUnitIds], enemyUnitIds: [...entry.enemyUnitIds] };
       }
+      if (entry.type === 'deployment_changed') {
+        return { ...entry, assignments: entry.assignments.map((assignment) => ({ ...assignment })) };
+      }
       return { ...entry };
     }),
   };
 }
 
-function validateUnitConfig(candidate: unknown, side: BattleSide, label: string): BattleUnit {
+function validateUnitConfig(candidate: unknown, side: BattleSide, label: string, defaultSlot: DeploymentSlot): BattleUnit {
   if (!isRecord(candidate)) fail(`${label} must be an object`);
   assertNonEmptyString(candidate.id, `${label}.id`);
   assertNonEmptyString(candidate.generalId, `${label}.generalId`);
@@ -338,6 +416,8 @@ function validateUnitConfig(candidate: unknown, side: BattleSide, label: string)
   assertStats(candidate.stats, `${label}.stats`);
   assertInteger(candidate.maxTroops, 1, 1_000_000, `${label}.maxTroops`);
   assertInteger(candidate.troops, 1, candidate.maxTroops, `${label}.troops`);
+  const slot = candidate.slot === undefined ? defaultSlot : candidate.slot;
+  assertDeploymentSlot(slot, `${label}.slot`);
   const skillId = candidate.skillId === undefined ? null : candidate.skillId;
   const registeredSkill = getGeneralSkillForOwner(candidate.generalId);
   if (skillId !== null) {
@@ -359,6 +439,7 @@ function validateUnitConfig(candidate: unknown, side: BattleSide, label: string)
     troops: candidate.troops,
     maxTroops: candidate.maxTroops,
     skillId,
+    slot,
     skillState: skillId ? createInitialGeneralSkillState(skillId) : null,
     suppressedUntilRound: null,
     schemeUsed: false,
@@ -378,8 +459,12 @@ export function createBattle(config: BattleConfig, seed: number): BattleState {
   }
   assertInteger(seed, 0, UINT32_MAX, 'seed');
 
-  const playerUnits = config.playerUnits.map((unit, index) => validateUnitConfig(unit, 'player', `config.playerUnits[${index}]`));
-  const enemyUnits = config.enemyUnits.map((unit, index) => validateUnitConfig(unit, 'enemy', `config.enemyUnits[${index}]`));
+  const playerUnits = config.playerUnits.map((unit, index) => validateUnitConfig(
+    unit, 'player', `config.playerUnits[${index}]`, DEFAULT_DEPLOYMENT_SLOTS[index],
+  ));
+  const enemyUnits = config.enemyUnits.map((unit, index) => validateUnitConfig(
+    unit, 'enemy', `config.enemyUnits[${index}]`, DEFAULT_DEPLOYMENT_SLOTS[index],
+  ));
   const units = [...playerUnits, ...enemyUnits];
   const ids = new Set<string>();
   for (const unit of units) {
@@ -388,7 +473,7 @@ export function createBattle(config: BattleConfig, seed: number): BattleState {
   }
 
   return {
-    version: 2,
+    version: 3,
     round: 1,
     phase: 'ready',
     rngState: seed === 0 ? BATTLE_RULES.seedFallback : seed,
