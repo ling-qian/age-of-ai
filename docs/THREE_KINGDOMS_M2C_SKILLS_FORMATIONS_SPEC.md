@@ -1,6 +1,6 @@
 # M2-C — General Skills and Tactical Deployment Formations
 
-**Status: SPECIFICATION DRAFT — IMPLEMENTATION NOT STARTED**
+**Status: IMPLEMENTATION IN PROGRESS — SAVE V2 AND SKILL DATA MODEL**
 
 ## 1. Purpose and milestone order
 
@@ -42,7 +42,9 @@ The earlier failure was in the browser fixture: Playwright's `addInitScript` ran
 
 M2-C must preserve and extend that proof:
 - Use the existing dedicated campaign namespace; do not reuse RTS name/settings keys.
-- Upgrade the save schema deliberately (proposed campaign save version 2) and support loading the existing version-1 campaign save.
+- Upgrade the campaign JSON schema to version 2 while retaining the existing `ageofai:three-kingdoms:campaign:v1` storage key so previously saved user data remains discoverable.
+- Upgrade the nested battle state to version 2 with explicit per-general `skillId` and serializable `{ skillId, cooldownRemaining, usesRemaining }` state.
+- Migrate valid campaign v1 + battle v1 saves in place, preserving story choice, resources, stage, round, RNG state, troops, statuses, doctrine, orders, and battle log. Invalid/unsupported data stays read-only until explicit user reset.
 - Keep the full battle state authoritative in one serialized campaign-save object: general IDs, skill state/cooldowns, deployment positions, doctrine, formations, RNG state, round, troop counts, statuses, orders, and structured log.
 - Validate all restored IDs, skill IDs, positions, numeric values, and battle-state invariants before accepting a save.
 - A malformed/unsupported save must not silently overwrite a previously valid save. Keep recovery behavior deterministic and scoped to the Three Kingdoms campaign.
@@ -107,7 +109,7 @@ Suggested thematic directions for design/balance:
 - **Guan Yu — Qinglong strike:** a high-impact single-target martial attack.
 - **Zhang Fei — Thunderous Roar:** a control skill that suppresses or weakens enemy frontline units.
 
-These are proposal names and effect directions only. Before implementation, the exact target pattern, numeric effect, cooldown, and uses-per-battle must be recorded in a versioned balance table. A general's skill must feel different in tactical use, not merely have a different label or damage coefficient.
+The first data-only balance set is recorded as `m2c-alpha-1` in `client/src/three-kingdoms/general-skills.ts`: Liu Bei — Rende (ally, restore 35 troops, 2 uses, 2-round cooldown); Guan Yu — Azure Dragon Strike (single enemy, 1.65× normal attack casualties, 2 uses, 3-round cooldown); Zhang Fei — Thunderous Roar (enemy frontline, suppress for 1 round at 0.65 outgoing-damage multiplier, 1 use, 3-round cooldown). These are the explicit initial tuning values for implementation and subsequent playtest review; this milestone slice registers and validates the data but does not yet execute skills in battle. The three skills must remain tactically distinct, not merely have different labels.
 
 Future recruitable generals cannot be added without a corresponding unique skill definition and test case. Ordinary troop units may continue to use class orders; personal skills belong to general-led units.
 
@@ -245,7 +247,18 @@ Forbidden:
 - Replacing the current Vite/TypeScript/custom DOM stack.
 - Introducing multiplayer tactical combat, cloud save backend, or LLM-generated battle outcomes.
 
-## 9. M2-C completion gate
+## 9. Implementation progress
+
+### Phase 1 — Campaign save and skill data model (in progress)
+
+- Added `general-skills.ts` with a unique owner-bound data definition for each starter general, a versioned initial balance set (`m2c-alpha-1`), and serializable skill state.
+- Battle state schema is now version 2. New battles initialize each starter general's skill state; validation rejects unknown skills, owner mismatches, invalid cooldowns, and invalid remaining-use counts.
+- Added a v1 battle-state migration that preserves all prior battle fields and grants the new skill state only during the one-time v1 → v2 conversion.
+- Added `campaign-save.ts`: campaign JSON version 2, stable legacy storage key, v1 campaign/battle migration, strict validation, and read-only handling for invalid/unsupported saves until an explicit reset.
+- Added headless migration/data tests and wired them into the existing GitHub Actions workflow.
+- **Not implemented in this phase:** skill execution, cooldown ticking, deployment positions, line-screening, targeting changes, UI controls, and the M2-C browser acceptance flow.
+
+## 10. M2-C completion gate
 
 M2-C is complete only when:
 - Skill rules and deployment rules have deterministic headless test coverage.
