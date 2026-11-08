@@ -1,6 +1,6 @@
 # M2-C — General Skills and Tactical Deployment Formations
 
-**Status: IMPLEMENTATION IN PROGRESS — PHASE 2: GENERAL SKILL EXECUTION**
+**Status: PHASE 3 RULES COMPLETE / PHASE 4 UI + BROWSER INTEGRATION IN PROGRESS**
 
 ## 1. Purpose and milestone order
 
@@ -42,9 +42,10 @@ The earlier failure was in the browser fixture: Playwright's `addInitScript` ran
 
 M2-C must preserve and extend that proof:
 - Use the existing dedicated campaign namespace; do not reuse RTS name/settings keys.
-- Upgrade the campaign JSON schema to version 2 while retaining the existing `ageofai:three-kingdoms:campaign:v1` storage key so previously saved user data remains discoverable.
-- Upgrade the nested battle state to version 2 with explicit per-general `skillId` and serializable `{ skillId, cooldownRemaining, usesRemaining }` state.
-- Migrate valid campaign v1 + battle v1 saves in place, preserving story choice, resources, stage, round, RNG state, troops, statuses, doctrine, orders, and battle log. Invalid/unsupported data stays read-only until explicit user reset.
+- Keep the existing `ageofai:three-kingdoms:campaign:v1` storage key while the campaign JSON schema is version 3 and the nested battle state is version 3.
+- Battle v3 adds a per-unit 3×3 deployment slot while preserving general `skillId`, serializable cooldown/use state, statuses, doctrine, round, RNG, troops, orders, and structured battle log.
+- Migrate campaign/battle v1 directly to v3 and campaign/battle v2 to v3. Deterministic default slots are assigned per side; story choice, resources, battle progress, skills, cooldowns, troop values, formations, orders, and log are retained.
+- Invalid/unsupported data remains read-only until explicit user reset; migration stays isolated to the Three Kingdoms campaign and never touches RTS identity/settings.
 - Keep the full battle state authoritative in one serialized campaign-save object: general IDs, skill state/cooldowns, deployment positions, doctrine, formations, RNG state, round, troop counts, statuses, orders, and structured log.
 - Validate all restored IDs, skill IDs, positions, numeric values, and battle-state invariants before accepting a save.
 - A malformed/unsupported save must not silently overwrite a previously valid save. Keep recovery behavior deterministic and scoped to the Three Kingdoms campaign.
@@ -129,7 +130,7 @@ A personal skill consumes that general's command for the round unless its specif
 
 Keep these separate in both UI and saved data:
 
-1. **Army doctrine:** Arrow or Square. This is the existing whole-army offensive/defensive stance.
+1. **Army doctrine:** Arrow, Square, Wedge, or Turtle. This is a whole-army offensive/defensive stance and is separate from unit deployment.
 2. **Unit deployment:** each general is assigned a battlefield slot before combat.
 
 Deployment must not be represented as a third name for Arrow/Square.
@@ -146,21 +147,21 @@ Use a 3×3 abstract deployment grid for each side:
 
 Rules:
 - Each living unit occupies exactly one slot.
-- No two units on the same side may share a slot.
+- No two units on the same side may share a slot; opposing armies may occupy mirrored cells on their own grids.
 - Empty slots are allowed.
 - A unit's slot is stable for a battle; M2-C does not add tactical movement or pathfinding.
-- The player can assign/reassign each general before the battle starts. Once the first round is resolved, deployment locks for that battle.
-- The enemy layout is created by deterministic rules/AI and is stored in the battle state.
+- The player can assign/reassign each general before combat. A deployment-lock event freezes the layout when combat begins; rules validation rejects later changes.
+- The enemy layout is deterministic and stored in the battle state.
 
 ### 5.3 Position must change gameplay
 
 The following baseline behavior is required:
-- Frontline units screen units behind them in the same lane against melee attacks.
-- Infantry and cavalry melee attacks can target only exposed enemies: the front-most living enemy in a lane. They may choose among exposed targets in different lanes.
-- Archers may target any living enemy, including protected middle/rear units, subject to any skill-specific target restriction.
+- Frontline units screen all living units behind them in the same lane against melee attacks.
+- Infantry and cavalry melee attacks may target only the front-most living enemy in the selected lane. They may choose among exposed targets across lanes.
+- Archers may target any living enemy, including protected middle/rear units, subject to skill-specific target rules.
 - If the front unit in a lane is defeated, the next living unit in that lane becomes exposed automatically.
-- Guard, suppression, and other skill effects remain associated with the unit, not the slot.
-- Position modifiers must be centralized as named balance constants and documented; do not scatter hardcoded coordinate checks throughout UI code.
+- Infantry specialize in holding the line; archers specialize in ranged access to all rows; cavalry retain melee exposure rules and gain a 1.2× damage modifier when striking across lanes.
+- Guard and suppression remain attached to units, not cells. Position and formation modifiers are centralized in named balance constants.
 
 This creates meaningful decisions: place durable infantry forward to screen, archers behind protection, and cavalry in a flank/front slot if the chosen skill or approved bonus supports it. No pathfinding, movement animation, terrain, facing, or real-time RTS mechanics are introduced in M2-C.
 
@@ -274,6 +275,20 @@ Forbidden:
 - Verified on candidate `edaae9c69918f178b9bd136a3ea1a487c7186827` in [GitHub Actions run 42434473539](https://github.com/ling-qian/age-of-ai/actions/runs/42434473539): typecheck, production build, original RTS WebSocket smoke, M2-A 28/28, save/skill model 7/7, skill execution 14/14, and the current Playwright regression all passed.
 - **Still outstanding:** 3×3 deployment positions, frontline screening, positional target validation, richer unit-class combat roles, additional army formations, deployment UI, visible skill controls, and the final M2-C browser acceptance flow.
 
+### Phase 3 — Deployment, line screening, unit classes, and army doctrine (COMPLETE / CI VERIFIED)
+
+- Campaign and battle save schema are now version 3. The existing storage key is retained. Valid v1 and v2 campaign/battle saves migrate to v3 with deterministic default slots and preserve story choices, resources, progress, RNG, troops, skill states/cooldowns, formations, orders, and logs.
+- Every unit has a validated 3×3 slot (`front|middle|rear × left|center|right`). Slots are unique within each side; opposing armies can use mirrored cells.
+- Added engine-level `setUnitDeployment`: assignments must cover every unit exactly once, cannot reuse a cell, return immutable state, and are locked after combat begins.
+- Added same-lane frontline screening for infantry/cavalry, automatic exposure after a frontline unit falls, all-row archer targeting, and a 1.2× cavalry cross-lane flank bonus.
+- Added four separate army doctrines: Arrow, Square, Wedge, and Turtle. Wedge strengthens cavalry while trading off other units; Turtle improves incoming defence while reducing outgoing damage.
+- Enemy AI selects only legal exposed melee targets and chooses Wedge/Turtle deterministically from roster composition.
+- Initial encounter positions are saved: Liu Bei front-center, Guan Yu front-left, Zhang Fei front-right; Raider Captain front-center, Rebel Archer rear-center, Spearman front-left.
+- Added `scripts/three_kingdoms_deployment_test.ts` (16/16 pass) for slot uniqueness, pre-battle assignment, deployment lock, frontline screening, archer rear access, exposed-target updates, AI targeting, cavalry flanking, Wedge/Turtle modifiers, and save/load persistence.
+- Candidate `987716622db7b9e31709a2b9e8cfa54534d04494` passed [GitHub Actions run 42435222033](https://github.com/ling-qian/age-of-ai/actions/runs/42435222033): typecheck, production build, RTS smoke, M2-A 28/28, save migration 7/7, skill execution 14/14, deployment/class/formation 16/16, and existing browser regression.
+- **Still outstanding:** player-facing deployment board, four-doctrine selector, visible skill controls/targets, and full Phase 4 browser acceptance.
+
+### Phase 4 — Deployment/skill UI and full browser acceptance (NEXT)
 ## 10. M2-C completion gate
 
 M2-C is complete only when:
