@@ -45,6 +45,8 @@ export interface BattleUnit extends BattleUnitConfig {
   side: BattleSide;
   skillId: string | null;
   skillState: GeneralSkillState | null;
+  /** Last round in which suppression can affect an outgoing attack; optional for older v2 saves. */
+  suppressedUntilRound?: number | null;
   schemeUsed: boolean;
   guarded: boolean;
   suppressed: boolean;
@@ -181,6 +183,10 @@ function assertUnitCore(value: unknown, label: string, allowZeroTroops: boolean)
     assertInteger(value.skillState.cooldownRemaining, 0, definition.cooldownRounds, `${label}.skillState.cooldownRemaining`);
     assertInteger(value.skillState.usesRemaining, 0, definition.usesPerBattle, `${label}.skillState.usesRemaining`);
   }
+  if (value.suppressedUntilRound !== undefined && value.suppressedUntilRound !== null) {
+    assertInteger(value.suppressedUntilRound, 1, BATTLE_RULES.maxRounds + 1, `${label}.suppressedUntilRound`);
+    if (value.suppressed !== true) fail(`${label}.suppressedUntilRound requires suppressed status`);
+  }
   if (typeof value.schemeUsed !== 'boolean' || typeof value.guarded !== 'boolean' || typeof value.suppressed !== 'boolean') {
     fail(`${label} status flags must be booleans`);
   }
@@ -294,6 +300,7 @@ export function migrateBattleStateV1ToV2(value: unknown): BattleState {
       ...candidate,
       skillId: skill?.id ?? null,
       skillState: skill ? createInitialGeneralSkillState(skill.id) : null,
+      suppressedUntilRound: candidate.suppressed === true ? Number(value.round) : null,
     };
   });
   const migrated = { ...value, version: 2, units };
@@ -309,6 +316,9 @@ function cloneState(state: BattleState): BattleState {
       ...unit,
       stats: { ...unit.stats },
       skillState: unit.skillState ? { ...unit.skillState } : null,
+      suppressedUntilRound: unit.suppressed
+        ? (unit.suppressedUntilRound ?? state.round)
+        : null,
     })),
     log: state.log.map((entry) => {
       if (entry.type === 'battle_started') {
@@ -350,6 +360,7 @@ function validateUnitConfig(candidate: unknown, side: BattleSide, label: string)
     maxTroops: candidate.maxTroops,
     skillId,
     skillState: skillId ? createInitialGeneralSkillState(skillId) : null,
+    suppressedUntilRound: null,
     schemeUsed: false,
     guarded: false,
     suppressed: false,
@@ -640,6 +651,7 @@ function resolveGeneralSkill(state: BattleState, actor: BattleUnit, order: Extra
       }
     } else if (definition.effect.type === 'suppress') {
       target.suppressed = true;
+      target.suppressedUntilRound = state.round + definition.effect.durationRounds;
     } else if (definition.effect.type === 'guard') {
       target.guarded = true;
     }
@@ -664,6 +676,11 @@ function tickSkillCooldowns(state: BattleState): void {
   for (const unit of state.units) {
     if (unit.skillState && unit.skillState.cooldownRemaining > 0) {
       unit.skillState.cooldownRemaining = Math.max(0, unit.skillState.cooldownRemaining - 1);
+    }
+    if (unit.suppressed && unit.suppressedUntilRound !== undefined
+      && unit.suppressedUntilRound !== null && state.round >= unit.suppressedUntilRound) {
+      unit.suppressed = false;
+      unit.suppressedUntilRound = null;
     }
   }
 }
@@ -756,7 +773,10 @@ export function resolveRound(state: BattleState, input: RoundInput): BattleState
       const random = nextRandom(next.rngState);
       next.rngState = random.state;
       const success = random.value < successChance;
-      if (success) target.suppressed = true;
+      if (success) {
+        target.suppressed = true;
+        target.suppressedUntilRound = next.round + 1;
+      }
       next.log.push({
         type: 'scheme_attempted',
         round: next.round,
