@@ -792,7 +792,6 @@ export class ThreeKingdomsScreen {
     unit: BattleUnit,
     state: BattleState,
     orders: UnitOrder[],
-    targets: BattleUnit[],
   ): HTMLElement {
     const card = el('article', 'tk-battle-unit player');
     card.dataset.unitId = unit.id;
@@ -801,9 +800,24 @@ export class ThreeKingdomsScreen {
     heading.appendChild(el('span', 'tk-unit-class', unitClassName(unit)));
     card.appendChild(heading);
     card.appendChild(el('div', 'tk-unit-troops', `${unit.troops} / ${unit.maxTroops} troops`));
+    card.appendChild(el('div', 'tk-unit-position', `Position: ${unit.slot.replace('-', ' · ')}`));
     const statuses = [unit.guarded ? 'Guarded' : '', unit.suppressed ? 'Suppressed' : '', unit.schemeUsed ? 'Scheme used' : '']
       .filter(Boolean);
     card.appendChild(el('div', 'tk-unit-status', statuses.length ? statuses.join(' · ') : 'Ready'));
+
+    const definition = unit.skillId ? getGeneralSkillById(unit.skillId) : undefined;
+    if (definition && unit.skillState) {
+      const skill = el('div', 'tk-general-skill');
+      skill.appendChild(el('strong', 'tk-general-skill-name', definition.name));
+      skill.appendChild(el('p', 'tk-general-skill-description', definition.description));
+      const cooldownText = unit.skillState.cooldownRemaining > 0
+        ? `Cooldown: ${unit.skillState.cooldownRemaining} round(s)`
+        : 'Ready';
+      skill.appendChild(el('span', 'tk-general-skill-limit',
+        `${cooldownText} · ${unit.skillState.usesRemaining}/${definition.usesPerBattle} uses left`,
+      ));
+      card.appendChild(skill);
+    }
     if (unit.troops <= 0) {
       card.classList.add('defeated');
       card.appendChild(el('span', 'tk-defeated-label', 'DEFEATED'));
@@ -811,6 +825,11 @@ export class ThreeKingdomsScreen {
     }
 
     const currentOrder = orders.find((order) => order.unitId === unit.id) ?? { unitId: unit.id, type: 'wait' as const };
+    const skillTargets = getValidSkillTargets(state, unit.id);
+    const skillReady = Boolean(definition && unit.skillState
+      && unit.skillState.cooldownRemaining === 0
+      && unit.skillState.usesRemaining > 0
+      && skillTargets.length > 0);
     const commandRow = el('div', 'tk-unit-command');
     const typeLabel = el('label', 'tk-command-label', 'Order');
     const typeSelect = el('select', 'tk-order-type');
@@ -818,13 +837,15 @@ export class ThreeKingdomsScreen {
     const typeOptions = [
       { value: 'attack', label: 'Attack' },
       { value: 'scheme', label: 'Scheme' },
+      ...(definition ? [{ value: 'skill', label: `Personal skill — ${definition.name}` }] : []),
       { value: 'wait', label: 'Wait' },
     ];
     for (const item of typeOptions) {
       const option = document.createElement('option');
       option.value = item.value;
       option.textContent = item.label;
-      option.disabled = item.value === 'scheme' && unit.schemeUsed;
+      option.disabled = (item.value === 'scheme' && unit.schemeUsed)
+        || (item.value === 'skill' && !skillReady);
       option.selected = currentOrder.type === item.value;
       typeSelect.appendChild(option);
     }
@@ -834,14 +855,25 @@ export class ThreeKingdomsScreen {
     const targetLabel = el('label', 'tk-command-label', 'Target');
     const targetSelect = el('select', 'tk-order-target');
     targetSelect.dataset.unitId = unit.id;
-    for (const target of targets) {
+    const legalTargets = currentOrder.type === 'skill'
+      ? skillTargets
+      : currentOrder.type === 'scheme'
+        ? livingUnits(state, 'enemy')
+        : currentOrder.type === 'attack'
+          ? getValidAttackTargets(state, unit.id)
+          : [];
+    for (const target of legalTargets) {
       const option = document.createElement('option');
       option.value = target.id;
-      option.textContent = `${target.name} — ${target.troops}`;
+      option.textContent = `${target.name} — ${target.troops} · ${target.slot.replace('-', ' ')}`;
       option.selected = 'targetId' in currentOrder && currentOrder.targetId === target.id;
       targetSelect.appendChild(option);
     }
-    targetSelect.disabled = currentOrder.type === 'wait' || targets.length === 0;
+    targetSelect.disabled = currentOrder.type === 'wait' || legalTargets.length === 0;
+    if (currentOrder.type !== 'wait' && 'targetId' in currentOrder && currentOrder.targetId
+      && !legalTargets.some((target) => target.id === currentOrder.targetId)) {
+      targetSelect.value = legalTargets[0]?.id ?? '';
+    }
     targetLabel.appendChild(targetSelect);
     commandRow.appendChild(targetLabel);
 
@@ -849,13 +881,18 @@ export class ThreeKingdomsScreen {
       this.changeOrderType(unit, typeSelect.value, targetSelect.value);
     });
     targetSelect.addEventListener('change', () => {
-      if (typeSelect.value === 'attack' || typeSelect.value === 'scheme') {
+      if (typeSelect.value === 'attack' || typeSelect.value === 'scheme' || typeSelect.value === 'skill') {
         const selected = state.units.find((candidate) => candidate.id === targetSelect.value);
         if (typeSelect.value === 'attack' && (!selected || !isValidAttackTarget(state, unit, selected))) {
           const fallback = getValidAttackTargets(state, unit.id)[0];
           this.setPlayerOrder(fallback
             ? { unitId: unit.id, type: 'attack', targetId: fallback.id }
             : { unitId: unit.id, type: 'wait' });
+          return;
+        }
+        if (typeSelect.value === 'skill' && (!selected || !isValidSkillTarget(unit, selected, definition!))) {
+          const fallback = skillTargets[0];
+          if (fallback) this.setPlayerOrder({ unitId: unit.id, type: 'skill', targetId: fallback.id });
           return;
         }
         this.setPlayerOrder({ unitId: unit.id, type: typeSelect.value, targetId: targetSelect.value });
