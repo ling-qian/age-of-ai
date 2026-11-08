@@ -472,7 +472,7 @@ export function createBattle(config: BattleConfig, seed: number): BattleState {
     ids.add(unit.id);
   }
 
-  return {
+  const state: BattleState = {
     version: 3,
     round: 1,
     phase: 'ready',
@@ -487,6 +487,8 @@ export function createBattle(config: BattleConfig, seed: number): BattleState {
       enemyUnitIds: enemyUnits.map((unit) => unit.id),
     }],
   };
+  assertBattleState(state, true);
+  return state;
 }
 
 function livingUnits(state: BattleState, side: BattleSide): BattleUnit[] {
@@ -623,6 +625,7 @@ export function setUnitDeployment(
   assignments: DeploymentAssignment[],
 ): BattleState {
   assertBattleState(state, false);
+  assertSide(side, 'deployment.side');
   const combatStarted = state.log.some((entry) =>
     entry.type !== 'battle_started' && entry.type !== 'deployment_changed',
   );
