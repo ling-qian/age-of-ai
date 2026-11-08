@@ -42,9 +42,9 @@ const config: BattleConfig = {
     { id: 'p-zhang', generalId: 'zhang-fei', name: 'Zhang Fei', unitClass: 'infantry', stats: { martial: 98, intelligence: 48, leadership: 80 }, troops: 230, maxTroops: 230, skillId: 'zhang-fei-thunderous-roar' },
   ],
   enemyUnits: [
-    { id: 'e-captain', generalId: 'raider-captain', name: 'Raider Captain', unitClass: 'infantry', stats: { martial: 64, intelligence: 42, leadership: 60 }, troops: 500, maxTroops: 500 },
-    { id: 'e-archer', generalId: 'rebel-archer', name: 'Rebel Archer', unitClass: 'archer', stats: { martial: 60, intelligence: 54, leadership: 55 }, troops: 175, maxTroops: 175 },
-    { id: 'e-spearman', generalId: 'rebel-spearman', name: 'Rebel Spearman', unitClass: 'infantry', stats: { martial: 58, intelligence: 35, leadership: 50 }, troops: 500, maxTroops: 500 },
+    { id: 'e-captain', generalId: 'raider-captain', name: 'Raider Captain', unitClass: 'infantry', stats: { martial: 64, intelligence: 42, leadership: 60 }, troops: 500, maxTroops: 500, slot: 'front-center' },
+    { id: 'e-archer', generalId: 'rebel-archer', name: 'Rebel Archer', unitClass: 'archer', stats: { martial: 60, intelligence: 54, leadership: 55 }, troops: 175, maxTroops: 175, slot: 'rear-center' },
+    { id: 'e-spearman', generalId: 'rebel-spearman', name: 'Rebel Spearman', unitClass: 'infantry', stats: { martial: 58, intelligence: 35, leadership: 50 }, troops: 500, maxTroops: 500, slot: 'front-left' },
   ],
 };
 
