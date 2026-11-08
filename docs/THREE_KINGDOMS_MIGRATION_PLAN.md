@@ -1,6 +1,6 @@
 # Three Kingdoms MVP Migration Plan
 
-Status: M1 is **ACCEPTED / FROZEN** at `107c62db98baa19267a4e8d131bc5443f35468fc` (preserved by `m1-freeze/107c62d`). M2-A deterministic battle engine and M2-B player-facing tactical battle integration are **COMPLETE / CI VERIFIED**. M2-B candidate: `cfb7614b6dae43defb68afb8631bbba341cb0612`; [CI run 42427498617](https://github.com/ling-qian/age-of-ai/actions/runs/42427498617) completed successfully. Next: M3 campaign loop.
+Status: M1 is **ACCEPTED / FROZEN** at `107c62db98baa19267a4e8d131bc5443f35468fc` (preserved by `m1-freeze/107c62d`). M2-A and M2-B are **COMPLETE / CI VERIFIED**; M2-B candidate `cfb7614b6dae43defb68afb8631bbba341cb0612` passed [CI run 42427498617](https://github.com/ling-qian/age-of-ai/actions/runs/42427498617). Before campaign-map expansion, the next milestone is **M2-C: general-specific skills and tactical deployment formations**.
 
 ## Safety rules
 
@@ -95,7 +95,26 @@ Implemented on candidate `cfb7614b6dae43defb68afb8631bbba341cb0612`:
 
 M2-B is a client-only single-player tactical battle integration. It does not add server routes, multiplayer messages, or changes to the original RTS.
 
-### M3 — Campaign loop (**NEXT**)
+### M2-C — General-specific skills and tactical deployment formations (**NEXT — SPECIFICATION DRAFT**)
+
+The current M2-B build is a playable first battle, not the full tactical system. Its generic Attack/Scheme/Wait orders and army-wide Arrow/Square stance do not satisfy the requirements for unique general skills and detailed deployment.
+
+Specification: `docs/THREE_KINGDOMS_M2C_SKILLS_FORMATIONS_SPEC.md`.
+
+Required before implementation:
+- Every playable/recruitable general must own at least one distinct signature active skill. A generic Scheme command is not a substitute for a general's personal skill.
+- Skill definitions must specify owner, target rules, effect, resource/cooldown or use limit, and deterministic resolution. Skill state must survive refresh/reload.
+- Separate army doctrine (Arrow/Square) from unit deployment. The player must assign each general/unit to a battlefield slot before the battle.
+- Use an abstract deployment grid (front/middle/rear × left/center/right) without introducing RTS pathfinding or real-time movement.
+- Make deployment meaningful: frontline screening, exposed targets, archer access to rear targets, and skill target/range rules must be explicit and deterministic.
+- The enemy deployment and skill use must be deterministic and saved/replayable.
+- Add rule tests and real-browser tests for skill use, cooldowns, formation placement, target availability, round resolution, reload restoration, and restarting the encounter.
+- Extend the campaign-save schema with a safe migration from the current save. Never overwrite the existing save with the test fixture on browser refresh. Do not touch RTS identity/settings keys.
+- Preserve the M1 freeze branch. No changes to `server/`, `shared/`, original RTS simulation, lobby, networking, or WebSocket protocol.
+
+Only after M2-C tests pass should M3 campaign-map and recruitment work begin.
+
+### M3 — Campaign loop
 - Five-city node map, city ownership, recruit roster, battle results, and next-event unlocks.
 - Define the first campaign route and city-state transitions before implementing map UI.
 - Battle victory unlocks the next campaign node; defeat/draw follow explicit retry or recovery rules.
