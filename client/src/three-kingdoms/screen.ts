@@ -12,8 +12,14 @@ import {
   chooseEnemyOrders,
   compareIdsByCodePoint,
   createBattle,
+  DEPLOYMENT_SLOTS,
   getValidAttackTargets,
+  getValidSkillTargets,
   isValidAttackTarget,
+  lockUnitDeployment,
+  setUnitDeployment,
+  type DeploymentAssignment,
+  type DeploymentSlot,
   isValidSkillTarget,
   resolveRound,
   type BattleConfig,
@@ -150,6 +156,8 @@ function describeBattleLog(state: BattleState, entry: BattleLogEntry): string {
       return `Battle begins: ${entry.playerUnitIds.length} vanguard units face ${entry.enemyUnitIds.length} Yellow Turban raiders.`;
     case 'deployment_changed':
       return `${entry.side === 'player' ? 'Your army' : 'The raiders'} redeploy: ${entry.assignments.map((item) => `${name(item.unitId)} to ${item.slot}`).join(', ')}.`;
+    case 'deployment_locked':
+      return `Deployment is locked. The armies take their positions for round ${entry.round}.`;
     case 'formation_selected':
       return `${entry.side === 'player' ? 'Your army' : 'The raiders'} adopt ${formationName(entry.formation)} formation.`;
     case 'unit_attacked':
@@ -301,10 +309,49 @@ export class ThreeKingdomsScreen {
     this.save.battleState = battleState;
     this.save.playerFormation = 'arrow';
     this.save.playerOrders = defaultPlayerOrders(battleState);
-    this.save.stage = 'battle';
+    this.save.stage = 'deployment';
+    this.save.playerOrders = [];
     this.battleError = '';
     this.persist();
     this.render();
+  }
+
+  private cancelDeployment(): void {
+    if (this.save.stage !== 'deployment') return;
+    this.resetBattle();
+  }
+
+  private changeDeployment(unitId: string, slot: DeploymentSlot): void {
+    const state = this.save.battleState;
+    if (!state || this.save.stage !== 'deployment') return;
+    const assignments: DeploymentAssignment[] = state.units
+      .filter((unit) => unit.side === 'player')
+      .map((unit) => ({ unitId: unit.id, slot: unit.id === unitId ? slot : unit.slot }));
+    try {
+      this.save.battleState = setUnitDeployment(state, 'player', assignments);
+      this.battleError = '';
+      this.persist();
+      this.render();
+    } catch (error) {
+      this.battleError = error instanceof Error ? error.message : 'The deployment could not be saved.';
+      this.render();
+    }
+  }
+
+  private startDeployedBattle(): void {
+    const state = this.save.battleState;
+    if (!state || this.save.stage !== 'deployment') return;
+    try {
+      this.save.battleState = lockUnitDeployment(state);
+      this.save.playerOrders = defaultPlayerOrders(this.save.battleState);
+      this.save.stage = 'battle';
+      this.battleError = '';
+      this.persist();
+      this.render();
+    } catch (error) {
+      this.battleError = error instanceof Error ? error.message : 'The battle could not begin.';
+      this.render();
+    }
   }
 
   private resetBattle(): void {
@@ -417,7 +464,9 @@ export class ThreeKingdomsScreen {
     }
     shell.appendChild(stats);
 
-    if (this.save.stage === 'battle' && this.save.battleState) {
+    if (this.save.stage === 'deployment' && this.save.battleState) {
+      this.renderDeployment(shell, this.save.battleState);
+    } else if (this.save.stage === 'battle' && this.save.battleState) {
       this.renderBattle(shell, this.save.battleState);
     } else if (this.save.stage === 'battle-entry' && this.save.selectedChoiceId) {
       this.renderBattleEntry(shell);
@@ -487,9 +536,9 @@ export class ThreeKingdomsScreen {
     rosters.appendChild(enemies);
     panel.appendChild(rosters);
 
-    panel.appendChild(el('p', 'tk-m2-note', 'M2-B now runs a deterministic 3v3 turn-based battle. Choose a formation and issue one order to each living unit.'));
+    panel.appendChild(el('p', 'tk-m2-note', 'Before the first clash, arrange your generals on the 3×3 field and choose an army doctrine. Every general brings a personal skill into battle.'));
     const actions = el('div', 'tk-actions');
-    const startBtn = el('button', 'btn primary tk-begin-battle', 'Begin tactical battle');
+    const startBtn = el('button', 'btn primary tk-begin-battle', 'Prepare deployment');
     startBtn.addEventListener('click', () => this.beginBattle());
     const resetBtn = el('button', 'btn tk-secondary', 'Restart opening');
     resetBtn.addEventListener('click', () => this.resetCampaign());
