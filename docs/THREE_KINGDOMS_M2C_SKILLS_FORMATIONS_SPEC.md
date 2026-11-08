@@ -249,14 +249,17 @@ Forbidden:
 
 ## 9. Implementation progress
 
-### Phase 1 — Campaign save and skill data model (in progress)
+### Phase 1 — Campaign save and skill data model (COMPLETE / CI VERIFIED)
 
 - Added `general-skills.ts` with a unique owner-bound data definition for each starter general, a versioned initial balance set (`m2c-alpha-1`), and serializable skill state.
 - Battle state schema is now version 2. New battles initialize each starter general's skill state; validation rejects unknown skills, owner mismatches, invalid cooldowns, and invalid remaining-use counts.
 - Added a v1 battle-state migration that preserves all prior battle fields and grants the new skill state only during the one-time v1 → v2 conversion.
 - Added `campaign-save.ts`: campaign JSON version 2, stable legacy storage key, v1 campaign/battle migration, strict validation, and read-only handling for invalid/unsupported saves until an explicit reset.
-- Added headless migration/data tests and wired them into the existing GitHub Actions workflow.
-- **Not implemented in this phase:** skill execution, cooldown ticking, deployment positions, line-screening, targeting changes, UI controls, and the M2-C browser acceptance flow.
+- Added headless migration/data tests and wired them into the existing GitHub Actions workflow (7/7 pass).
+- Extended the real-browser regression to seed a legacy v1 campaign, verify automatic v2 persistence and stage retention, start the tactical encounter, and verify the v2 battle state plus three owner-bound skill IDs.
+- Verified candidate `483597629f68287fa26a6e3cd86feb1da1036cf5` in [GitHub Actions run 42429683074](https://github.com/ling-qian/age-of-ai/actions/runs/42429683074): `npm ci`, typecheck, production build, original RTS WebSocket smoke, M2-A 28/28 deterministic tests, M2-C 7/7 save/skill-model tests, and the complete existing browser regression all passed.
+- Source-diff audit against `feature/three-kingdoms-mvp` shows only Three Kingdoms client files, Three Kingdoms tests/docs, and the validation workflow changed; no `server/`, `shared/`, or original RTS/network files changed.
+- **Not implemented in this phase:** skill execution, cooldown ticking, deployment positions, line-screening, positional target validation, skill UI controls, or the full M2-C browser acceptance flow.
 
 ## 10. M2-C completion gate
 
