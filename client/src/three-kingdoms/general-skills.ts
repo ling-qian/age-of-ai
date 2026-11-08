@@ -1,8 +1,8 @@
 /**
  * Serializable signature-skill data for Three Kingdoms generals.
  *
- * This is a data registry, not an execution engine. M2-C's next combat-rules
- * slice will resolve these effect types in battle-engine.ts. Keeping the
+ * This is a serializable data registry. battle-engine.ts validates ownership,
+ * target patterns, resource limits, and deterministic effect resolution. Keeping
  * definitions data-only makes ownership and balance auditable and save-safe.
  */
 export type GeneralSkillTarget =
@@ -38,7 +38,7 @@ export interface GeneralSkillState {
 /**
  * Initial M2-C balance baseline (balance set m2c-alpha-1).
  * Values are explicit and versioned so later tuning is reviewable. These
- * definitions are not yet executable until the skill-resolution slice lands.
+ * definitions are executed by the deterministic M2-C combat rules.
  */
 export const GENERAL_SKILL_BALANCE_VERSION = 'm2c-alpha-1';
 
@@ -67,7 +67,7 @@ export const GENERAL_SKILLS: readonly GeneralSkillDefinition[] = [
     id: 'zhang-fei-thunderous-roar',
     ownerGeneralId: 'zhang-fei',
     name: 'Thunderous Roar',
-    description: 'Suppress one enemy frontline unit for one round.',
+    description: 'Suppress one enemy frontline unit’s next outgoing attack at 0.65× damage.'
     target: 'enemy_frontline',
     cooldownRounds: 3,
     usesPerBattle: 1,
