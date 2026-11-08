@@ -168,9 +168,6 @@ function assertUnitCore(value: unknown, label: string, allowZeroTroops: boolean)
   assertInteger(value.troops, allowZeroTroops ? 0 : 1, value.maxTroops, `${label}.troops`);
   if (typeof value.skillId !== 'string' && value.skillId !== null) fail(`${label}.skillId must be a string or null`);
   const registeredSkill = getGeneralSkillForOwner(value.generalId);
-  if (registeredSkill && value.skillId !== registeredSkill.id) {
-    fail(`${label} is missing its registered personal skill ${registeredSkill.id}`);
-  }
   if (value.skillId === null) {
     if (value.skillState !== null) fail(`${label} without a skill cannot have skill state`);
   } else {
@@ -182,6 +179,9 @@ function assertUnitCore(value: unknown, label: string, allowZeroTroops: boolean)
     if (value.skillState.skillId !== value.skillId) fail(`${label}.skillState skill ID does not match unit`);
     assertInteger(value.skillState.cooldownRemaining, 0, definition.cooldownRounds, `${label}.skillState.cooldownRemaining`);
     assertInteger(value.skillState.usesRemaining, 0, definition.usesPerBattle, `${label}.skillState.usesRemaining`);
+  }
+  if (registeredSkill && value.skillId !== registeredSkill.id) {
+    fail(`${label} is missing its registered personal skill ${registeredSkill.id}`);
   }
   if (value.suppressedUntilRound !== undefined && value.suppressedUntilRound !== null) {
     assertInteger(value.suppressedUntilRound, 1, BATTLE_RULES.maxRounds + 1, `${label}.suppressedUntilRound`);
@@ -340,14 +340,14 @@ function validateUnitConfig(candidate: unknown, side: BattleSide, label: string)
   assertInteger(candidate.troops, 1, candidate.maxTroops, `${label}.troops`);
   const skillId = candidate.skillId === undefined ? null : candidate.skillId;
   const registeredSkill = getGeneralSkillForOwner(candidate.generalId);
-  if (registeredSkill && skillId !== registeredSkill.id) {
-    fail(`${label} must declare its registered personal skill ${registeredSkill.id}`);
-  }
   if (skillId !== null) {
     assertNonEmptyString(skillId, `${label}.skillId`);
     const definition = getGeneralSkillById(skillId);
     if (!definition) fail(`${label} references unknown skill ${skillId}`);
     if (definition.ownerGeneralId !== candidate.generalId) fail(`${label} does not own skill ${skillId}`);
+  }
+  if (registeredSkill && skillId !== registeredSkill.id) {
+    fail(`${label} must declare its registered personal skill ${registeredSkill.id}`);
   }
   return {
     id: candidate.id,
