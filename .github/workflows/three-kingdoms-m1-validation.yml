@@ -7,6 +7,7 @@ on:
       - feature/m2c-save-skill-model
       - feature/m2c-skill-execution
       - feature/m2c-deployment-rules
+      - feature/m2c-tactical-ui
   pull_request:
     branches:
       - main
