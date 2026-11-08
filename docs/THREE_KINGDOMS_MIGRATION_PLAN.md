@@ -114,6 +114,8 @@ Required before implementation:
 
 Phase 1 implementation is on `feature/m2c-save-skill-model`. Campaign saves retain the existing localStorage key while moving the JSON schema and battle-state schema to version 2. Valid v1 saves migrate; invalid/unknown saves are read-only until explicit reset. The skill registry currently covers Liu Bei, Guan Yu, and Zhang Fei with versioned data-only definitions. This is not yet a full M2-C acceptance: skill execution, cooldown resolution, deployment, positional targeting, and browser acceptance remain outstanding.
 
+**Phase 1 verification:** candidate `483597629f68287fa26a6e3cd86feb1da1036cf5` passed [GitHub Actions run 42429683074](https://github.com/ling-qian/age-of-ai/actions/runs/42429683074), including typecheck/build, original RTS smoke, 28 M2-A tests, 7 M2-C save/skill-model tests, and the Playwright browser regression. Diff audit confirms no `server/`, `shared/`, or original RTS/network files changed. This verifies only save migration and skill data registration—not skill use in combat.
+
 Only after M2-C tests pass should M3 campaign-map and recruitment work begin.
 
 ### M3 — Campaign loop
