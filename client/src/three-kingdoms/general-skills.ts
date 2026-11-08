@@ -67,7 +67,7 @@ export const GENERAL_SKILLS: readonly GeneralSkillDefinition[] = [
     id: 'zhang-fei-thunderous-roar',
     ownerGeneralId: 'zhang-fei',
     name: 'Thunderous Roar',
-    description: 'Suppress one enemy frontline unit’s next outgoing attack at 0.65× damage.'
+    description: 'Suppress one enemy frontline unit’s next outgoing attack at 0.65× damage.',
     target: 'enemy_frontline',
     cooldownRounds: 3,
     usesPerBattle: 1,
